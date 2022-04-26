@@ -5,3 +5,8 @@ Parameters can also be specified directly when calling the AG by using the Param
 
 The examples directory contains griewank.rs which is the optimization of the griewank function in dimension 100 along with a parameters.json file.
 
+The griewank example can be run with the command:
+
+cargo run --example griewank --release
+
+
