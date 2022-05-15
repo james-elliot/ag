@@ -1,4 +1,4 @@
-# Genetic algorithm written in Rust
+# A genetic algorithm written in Rust
 Parameters for the algorithm are read from a parameters.json file. The program looks for such a file in ./parameters.json , ~/parameters.json and examples/parameters.json
 
 Parameters can also be specified directly when calling the AG by using the Params structure.
