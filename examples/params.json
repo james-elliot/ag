@@ -1,6 +1,6 @@
 // Parameters
 {
-    "nb_elems": 1000,
+    "nb_elems": 500,
     "nb_gen": 2000,
     "pmut": 0.20,
     "pcross": 0.40,
@@ -8,8 +8,8 @@
     "scaling": 2, // 0: None, 1: sigma_truncation, 2: ranking
     "normalize": 1, // 0: None, 1: f(x)=x/max, 2: f(x)=(x-min)/(max-min)
     "elitist": true,
-    "sharing": true,
-    "dmax": 8.0,
+    "sharing": 2, // 0: None, 1: Dynamic, 2: Dendogram
+    "dmax": 2.0, // Dynamic: max distance for same cluster, Dendogram: max dissimilarity
     "sfactor": 0.99999, // 1.0: save only best, >1.0 : save none, <1.0 : save clusters best element
     "parallel": false,
     "verbose": 1, //0: nothing, 1:parameters, 2:best elem and clus stats, 3:debug

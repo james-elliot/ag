@@ -184,7 +184,51 @@ struct Cluster<T: ElemPop> {
     v_best: f64,
 }
 
-fn pop_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
+use kodama::{Method, linkage};
+
+fn pop_dendo_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
+    let mut clus: Vec<Cluster<T>> = Vec::with_capacity(p.len());
+    let mut condensed = vec![];
+    for row in 0..p.len() - 1 {
+        for col in row + 1..p.len() {
+            condensed.push(p[row].data.dist(&p[col].data));
+        }
+    }
+    for i in 0..p.len() {
+	let mut c = Cluster {
+                center: p[i].data.clone(),
+                elems: Vec::new(),
+                nb_elems: 1,
+                best: i,
+                v_best: p[i].r_fit.unwrap(),
+        };
+        c.elems.push(i);
+	clus.push(c);
+    }
+    let dend = linkage(&mut condensed, p.len(), Method::Average);
+    let steps = dend.steps();
+    for s in steps.iter() {
+	if s.dissimilarity > dmax {break}
+	let (i,j) = (s.cluster1,s.cluster2);
+	let mut k = i;
+	if clus[j].v_best > clus[i].v_best {k=j}
+	let mut c = Cluster {
+                center: ElemPop::barycenter(&clus[i].center, &clus[j].center, clus[i].nb_elems, clus[j].nb_elems), 
+                elems: clus[i].elems.clone(),
+                nb_elems: clus[i].nb_elems+clus[j].nb_elems,
+                best: clus[k].best,
+                v_best: clus[k].v_best,
+        };
+	c.elems.append(&mut clus[j].elems);
+	clus.push(c);
+	clus[i].nb_elems=0;
+	clus[j].nb_elems=0;
+    }
+    clus.retain(|c| c.nb_elems > 0);
+    return clus;
+}
+
+fn pop_dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
     let nb_elems = p.len();
     let mut clus: Vec<Cluster<T>> = Vec::with_capacity(nb_elems);
     for (ind, e) in p.iter().enumerate() {
@@ -252,7 +296,7 @@ pub struct Params {
     scaling: u64,
     normalize: u64,
     elitist: bool,
-    sharing: bool,
+    sharing: u64,
     sfactor: f64,
     dmax: f64,
     parallel: bool,
@@ -340,9 +384,14 @@ pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (T,f64,Timing,Timin
 	twi.scaling=twi.scaling.saturating_add(swt.elapsed());
         if par.verbose>=3 {for val in p.iter() {println!("Scale: {:?}", val)}}
 
-	if par.sharing {
+	if par.sharing > 0 {
 	    let (spt,swt) = (ProcessTime::now(),Instant::now());
-            let clusters = pop_clustering(&p, par.dmax);
+            let clusters;
+	    match par.sharing {
+		1 => clusters = pop_dyn_clustering(&p, par.dmax),
+		2 => clusters = pop_dendo_clustering(&p, par.dmax),
+		_ => panic!("Sharing is 0, 1 or 2")
+	    }
             if par.verbose>=3 {for c in clusters.iter() {println!("{:?}", c)}}
             p = share_fitness(p, &clusters);
             if par.verbose>=3 {for val in p.iter() {println!("Share: {:?}", val)}}
