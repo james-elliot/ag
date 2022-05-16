@@ -215,11 +215,12 @@ fn pop_dendo_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Clu
 	let mut k = i;
 	if clus[j].v_best > clus[i].v_best {k=j}
 	let mut c = Cluster {
-                center: ElemPop::barycenter(&clus[i].center, &clus[j].center, clus[i].nb_elems, clus[j].nb_elems), 
-                elems: clus[i].elems.clone(),
-                nb_elems: clus[i].nb_elems+clus[j].nb_elems,
-                best: clus[k].best,
-                v_best: clus[k].v_best,
+            center: ElemPop::barycenter(&clus[i].center, &clus[j].center,
+					clus[i].nb_elems, clus[j].nb_elems), 
+            elems: clus[i].elems.clone(),
+            nb_elems: clus[i].nb_elems+clus[j].nb_elems,
+            best: clus[k].best,
+            v_best: clus[k].v_best,
         };
 	c.elems.append(&mut clus[j].elems);
 	clus.push(c);
@@ -265,7 +266,6 @@ fn pop_dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
     return clus;
 }
 
-//octopus purpan genomique
 fn share_fitness<T: ElemPop>(mut p: Pop<T>, clus: &Vec<Cluster<T>>, spenalty : u64) -> Pop<T> {
     let nb = p.len() as f64;
     for c in clus.iter() {
@@ -298,7 +298,7 @@ fn get_bests<T: ElemPop>(mut clus: Vec<Cluster<T>>, mut nbest:Vec<usize>,sfactor
 }
 
 use serde::{Deserialize, Serialize};
-#[derive(Serialize, Deserialize,Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Params {
     pub nb_elems: usize,
     pub nb_gen: u64,
@@ -389,9 +389,9 @@ pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timin
         p = eval_pop(p,par.parallel,par.evolutive);
 	tpi.eval=tpi.eval.saturating_add(spt.elapsed());
 	twi.eval=twi.eval.saturating_add(swt.elapsed());
-	let ib = find_best(&p);
-	if par.verbose>=2 {println!("Gen: {:?} Best: {:?}", num, p[ib])}
-	if par.elitist {bests.push(ib)}
+	let ibest = find_best(&p);
+	if par.verbose>=2 {println!("Gen: {:?} Best: {:?}", num, p[ibest])}
+	if par.elitist {bests.push(ibest)}
 	
 	let (spt,swt) = (ProcessTime::now(),Instant::now());
         p = scale_fitness(p,par.scaling,par.normalize);
@@ -424,7 +424,10 @@ pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timin
 	}
         if par.verbose>=3 {for b in bests.iter() {println!("best: {:?}", b)}}
 
-	if shared.load(Ordering::Relaxed) || num==par.nb_gen {break}
+	if shared.load(Ordering::Relaxed) || num==par.nb_gen {
+	    if bests.is_empty() {bests.push(ibest)}
+	    break
+	}
 	num=num+1;
 	
 	let (spt,swt) = (ProcessTime::now(),Instant::now());
@@ -438,8 +441,8 @@ pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timin
 	tpi.crossmut=tpi.crossmut.saturating_add(spt.elapsed());
 	twi.crossmut=twi.crossmut.saturating_add(swt.elapsed());
         if par.verbose>=3 {for val in p.iter() {println!("CrossMut: {:?}", val)}}
-
     }
+    
     let mut res = Vec::new();
     for i in bests.iter() {
 	res.push((p[*i].data.clone(),p[*i].r_fit.unwrap()));
