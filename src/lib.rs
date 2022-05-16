@@ -186,7 +186,7 @@ struct Cluster<T: ElemPop> {
 
 use kodama::{Method, linkage};
 
-fn pop_dendo_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
+fn pop_dendo_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluster<T>> {
     let mut clus: Vec<Cluster<T>> = Vec::with_capacity(p.len());
     let mut condensed = vec![];
     for row in 0..p.len() - 1 {
@@ -207,7 +207,9 @@ fn pop_dendo_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
     }
     let dend = linkage(&mut condensed, p.len(), Method::Average);
     let steps = dend.steps();
+    let mut nb_clus = ((p.len() as f64) * pmax+0.5) as u64;
     for s in steps.iter() {
+	if nb_clus <=0 {break}
 	if s.dissimilarity > dmax {break}
 	let (i,j) = (s.cluster1,s.cluster2);
 	let mut k = i;
@@ -223,6 +225,7 @@ fn pop_dendo_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
 	clus.push(c);
 	clus[i].nb_elems=0;
 	clus[j].nb_elems=0;
+	nb_clus = nb_clus-1;
     }
     clus.retain(|c| c.nb_elems > 0);
     return clus;
@@ -308,6 +311,7 @@ pub struct Params {
     pub sharing: u64,
     pub sfactor: f64,
     pub dmax: f64,
+    pub pmax: f64,
     pub spenalty : u64,
     pub parallel: bool,
     pub verbose:u64,
@@ -332,7 +336,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Instant,Duration};
 use cpu_time::ProcessTime;
-pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (T,f64,Timing,Timing) {
+pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timing,Timing) {
     let par:Params;
 
     match param {
@@ -378,14 +382,15 @@ pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (T,f64,Timing,Timin
     let mut bests=Vec::new();
     let (mut tpi,mut twi):(Timing,Timing)=(Default::default(),Default::default());
     let (sptt,swtt) = (ProcessTime::now(),Instant::now());
-    for i in 0..par.nb_gen {
+    let mut num = 0;
+    loop {
 	bests.clear();
 	let (spt,swt) = (ProcessTime::now(),Instant::now());
         p = eval_pop(p,par.parallel,par.evolutive);
 	tpi.eval=tpi.eval.saturating_add(spt.elapsed());
 	twi.eval=twi.eval.saturating_add(swt.elapsed());
 	let ib = find_best(&p);
-	if par.verbose>=2 {println!("Gen: {:?} Best: {:?}", i, p[ib])}
+	if par.verbose>=2 {println!("Gen: {:?} Best: {:?}", num, p[ib])}
 	if par.elitist {bests.push(ib)}
 	
 	let (spt,swt) = (ProcessTime::now(),Instant::now());
@@ -399,7 +404,7 @@ pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (T,f64,Timing,Timin
             let clusters;
 	    match par.sharing {
 		1 => clusters = pop_dyn_clustering(&p, par.dmax),
-		2 => clusters = pop_dendo_clustering(&p, par.dmax),
+		2 => clusters = pop_dendo_clustering(&p, par.dmax, par.pmax),
 		_ => panic!("Sharing is 0, 1 or 2")
 	    }
             if par.verbose>=3 {for c in clusters.iter() {println!("{:?}", c)}}
@@ -419,6 +424,9 @@ pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (T,f64,Timing,Timin
 	}
         if par.verbose>=3 {for b in bests.iter() {println!("best: {:?}", b)}}
 
+	if shared.load(Ordering::Relaxed) || num==par.nb_gen {break}
+	num=num+1;
+	
 	let (spt,swt) = (ProcessTime::now(),Instant::now());
         p = reproduce_pop(p, &bests,&mut rng);
 	tpi.reproduce=tpi.reproduce.saturating_add(spt.elapsed());
@@ -431,11 +439,13 @@ pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (T,f64,Timing,Timin
 	twi.crossmut=twi.crossmut.saturating_add(swt.elapsed());
         if par.verbose>=3 {for val in p.iter() {println!("CrossMut: {:?}", val)}}
 
-	if shared.load(Ordering::Relaxed) {break}
     }
+    let mut res = Vec::new();
+    for i in bests.iter() {
+	res.push((p[*i].data.clone(),p[*i].r_fit.unwrap()));
+    }
+    res.sort_by(|(_,v1), (_,v2)| v1.partial_cmp(v2).unwrap());
     tpi.total=tpi.total.saturating_add(sptt.elapsed());
     twi.total=twi.total.saturating_add(swtt.elapsed());
-    p = eval_pop(p,par.parallel,par.evolutive);
-    let ib = find_best(&p);
-    return (p[ib].data.clone(),p[ib].r_fit.unwrap(),tpi,twi)
+    return (res,tpi,twi)
 }
