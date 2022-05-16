@@ -10,6 +10,7 @@
     "elitist": true,
     "sharing": 2, // 0: None, 1: Dynamic, 2: Dendogram
     "dmax": 2.0, // Dynamic: max distance for same cluster, Dendogram: max dissimilarity
+    "spenalty" : 1, // 0: None, 1: f/k, 2: f*(1-(k-1)/n)
     "sfactor": 0.99999, // 1.0: save only best, >1.0 : save none, <1.0 : save clusters best element
     "parallel": false,
     "verbose": 1, //0: nothing, 1:parameters, 2:best elem and clus stats, 3:debug

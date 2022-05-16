@@ -263,9 +263,18 @@ fn pop_dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
 }
 
 //octopus purpan genomique
-fn share_fitness<T: ElemPop>(mut p: Pop<T>, clus: &Vec<Cluster<T>>) -> Pop<T> {
+fn share_fitness<T: ElemPop>(mut p: Pop<T>, clus: &Vec<Cluster<T>>, spenalty : u64) -> Pop<T> {
+    let nb = p.len() as f64;
     for c in clus.iter() {
-        for i in c.elems.iter() {p[*i].s_fit = p[*i].s_fit / (c.nb_elems as f64)}
+	let k = c.nb_elems as f64;
+        for i in c.elems.iter() {
+	    match spenalty {
+		0 => {}
+		1 => p[*i].s_fit = p[*i].s_fit / k,
+		2 => p[*i].s_fit = p[*i].s_fit * (1.-((k-1.)/nb)),
+		_ => panic!("Invalid spenalty")
+	    }
+	}
     }
     return p;
 }
@@ -288,32 +297,33 @@ fn get_bests<T: ElemPop>(mut clus: Vec<Cluster<T>>, mut nbest:Vec<usize>,sfactor
 use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize,Debug)]
 pub struct Params {
-    nb_elems: usize,
-    nb_gen: u64,
-    pmut: f64,
-    pcross: f64,
-    evolutive: bool,
-    scaling: u64,
-    normalize: u64,
-    elitist: bool,
-    sharing: u64,
-    sfactor: f64,
-    dmax: f64,
-    parallel: bool,
-    verbose:u64,
-    seed: u64,
-    ctrlc: bool
+    pub nb_elems: usize,
+    pub nb_gen: u64,
+    pub pmut: f64,
+    pub pcross: f64,
+    pub evolutive: bool,
+    pub scaling: u64,
+    pub normalize: u64,
+    pub elitist: bool,
+    pub sharing: u64,
+    pub sfactor: f64,
+    pub dmax: f64,
+    pub spenalty : u64,
+    pub parallel: bool,
+    pub verbose:u64,
+    pub seed: u64,
+    pub ctrlc: bool
 }
 
 #[derive(Default,Debug)]
 pub struct Timing {
-    eval:Duration,
-    scaling:Duration,
-    clustering:Duration,
-    sshare:Duration,
-    crossmut: Duration,
-    reproduce: Duration,
-    total:Duration
+    pub eval:Duration,
+    pub scaling:Duration,
+    pub clustering:Duration,
+    pub sshare:Duration,
+    pub crossmut: Duration,
+    pub reproduce: Duration,
+    pub total:Duration
 }
 
 use std::fs;
@@ -393,7 +403,7 @@ pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (T,f64,Timing,Timin
 		_ => panic!("Sharing is 0, 1 or 2")
 	    }
             if par.verbose>=3 {for c in clusters.iter() {println!("{:?}", c)}}
-            p = share_fitness(p, &clusters);
+            p = share_fitness(p, &clusters, par.spenalty);
             if par.verbose>=3 {for val in p.iter() {println!("Share: {:?}", val)}}
 	    tpi.clustering=tpi.clustering.saturating_add(spt.elapsed());
 	    twi.clustering=twi.clustering.saturating_add(swt.elapsed());
