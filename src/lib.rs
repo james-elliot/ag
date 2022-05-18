@@ -186,7 +186,7 @@ struct Cluster<T: ElemPop> {
 
 use kodama::{Method, linkage};
 
-fn pop_dendo_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluster<T>> {
+fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluster<T>> {
     let mut clus: Vec<Cluster<T>> = Vec::with_capacity(p.len());
     let mut condensed = vec![];
     for row in 0..p.len() - 1 {
@@ -207,9 +207,10 @@ fn pop_dendo_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Clu
     }
     let dend = linkage(&mut condensed, p.len(), Method::Average);
     let steps = dend.steps();
-    let mut nb_clus = ((p.len() as f64) * pmax+0.5) as u64;
+    let nb_clus_max = ((p.len() as f64) * pmax+0.5) as usize;
+    let mut nb_clus = p.len();
     for s in steps.iter() {
-	if nb_clus <=0 {break}
+	if nb_clus <= nb_clus_max {break}
 	if s.dissimilarity > dmax {break}
 	let (i,j) = (s.cluster1,s.cluster2);
 	let mut k = i;
@@ -232,7 +233,7 @@ fn pop_dendo_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Clu
     return clus;
 }
 
-fn pop_dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
+fn dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
     let nb_elems = p.len();
     let mut clus: Vec<Cluster<T>> = Vec::with_capacity(nb_elems);
     for (ind, e) in p.iter().enumerate() {
@@ -403,8 +404,8 @@ pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timin
 	    let (spt,swt) = (ProcessTime::now(),Instant::now());
             let clusters;
 	    match par.sharing {
-		1 => clusters = pop_dyn_clustering(&p, par.dmax),
-		2 => clusters = pop_dendo_clustering(&p, par.dmax, par.pmax),
+		1 => clusters = dyn_clustering(&p, par.dmax),
+		2 => clusters = dendro_clustering(&p, par.dmax, par.pmax),
 		_ => panic!("Sharing is 0, 1 or 2")
 	    }
             if par.verbose>=3 {for c in clusters.iter() {println!("{:?}", c)}}
