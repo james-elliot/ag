@@ -1,6 +1,5 @@
 use rand::{Rng,SeedableRng};
 use rayon::prelude::*;
-use std::rc::Rc;
 pub type Trng=rand_chacha::ChaCha8Rng;
 
 pub trait ElemPop: Clone + Send {
