@@ -7,7 +7,6 @@ pub trait ElemPop: Clone + Send {
     fn eval(&self) -> f64;
     fn dist(&self, u: &Self) -> f64;
     fn mutate(&self, r: &mut Trng) -> Self;
-    //    fn cross<'a>(e1: &'a mut Self,e2: &'a mut Self,r: &mut Trng);
     fn cross(e1: &mut Self,e2: &mut Self,r: &mut Trng);
     fn barycenter(e1: &Self, e2: &Self, n1: u32, n2: u32) -> Self;
 }
