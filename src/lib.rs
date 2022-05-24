@@ -1,6 +1,6 @@
 use rand::{Rng,SeedableRng};
 use rayon::prelude::*;
-
+use std::rc::Rc;
 pub type Trng=rand_chacha::ChaCha8Rng;
 
 pub trait ElemPop: Clone + Send {
@@ -8,7 +8,8 @@ pub trait ElemPop: Clone + Send {
     fn eval(&self) -> f64;
     fn dist(&self, u: &Self) -> f64;
     fn mutate(&self, r: &mut Trng) -> Self;
-    fn cross<'a>(e1: &'a mut Self,e2: &'a mut Self,r: &mut Trng) -> (&'a Self, &'a Self);
+    //    fn cross<'a>(e1: &'a mut Self,e2: &'a mut Self,r: &mut Trng);
+    fn cross(e1: &mut Self,e2: &mut Self,r: &mut Trng);
     fn barycenter(e1: &Self, e2: &Self, n1: u32, n2: u32) -> Self;
 }
 
@@ -164,9 +165,9 @@ fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, r
         let ind2 = (ind1 + rng.gen_range(0..nb_elems - 1) + 1) % nb_elems;
         let mut a = oldp[ind1].data.clone();
         let mut b = oldp[ind2].data.clone();
-        let (u, v) = ElemPop::cross(&mut a, &mut b, rng);
-        p.push(Chromosome {data: u.clone(),r_fit: None,s_fit: 0.,});
-        p.push(Chromosome {data: v.clone(),r_fit: None,s_fit: 0.,});
+        ElemPop::cross(&mut a, &mut b, rng);
+        p.push(Chromosome {data: a,r_fit: None,s_fit: 0.,});
+        p.push(Chromosome {data: b,r_fit: None,s_fit: 0.,});
     }
     for _i in 0..nbr {
         let ind = rng.gen_range(0..nb_elems);

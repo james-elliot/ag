@@ -43,14 +43,13 @@ impl ElemPop for Data {
         t[i] = scale(t[i] + r.gen_range(-0.5..0.5));
         return Data {v: t}
     }
-    fn cross<'a>(e1: &'a mut Data,e2: &'a mut Data,r: &mut Trng) -> (&'a Data, &'a Data) {
+    fn cross(e1: &mut Data,e2: &mut Data,r: &mut Trng) {
         let a: f64 = r.gen_range(-0.5..1.5);
 	let i = r.gen_range(0..SIZE);
         let b1 = a * e1.v[i] + (1.0 - a) * e2.v[i];
         let b2 = a * e2.v[i] + (1.0 - a) * e1.v[i];
         e1.v[i] = scale(b1);
         e2.v[i] = scale(b2);
-        return (e1, e2);
     }
     fn barycenter(e1: &Self, e2: &Self, n1: u32, n2: u32) -> Self {
 	let mut t = Vec::with_capacity(SIZE);
