@@ -5,7 +5,8 @@ use std::sync::Arc;
 use kodama::{Method, linkage};
 use serde::{Deserialize, Serialize};
 use json_comments::StripComments;
-use std::fs;
+use std::{fs,env};
+use std::path::Path;
 use std::time::{Instant,Duration};
 use cpu_time::ProcessTime;
 
@@ -345,20 +346,25 @@ pub struct Timing {
 }
 
 pub fn ag<T:ElemPop>(param:Option<Params>)-> (Vec<(T,f64)>,Timing,Timing) {
-//    pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timing,Timing) {
+    //    pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timing,Timing) {
+    let args: Vec<String> = env::args().collect();
+    let path = Path::new(&args[0]);
+    let name = path.file_name().unwrap();
     let par:Params;
 
     match param {
 	None => {
-	    let paths = ["./params.json","~/params.json","examples/params.json"];
+	    let paths = [".","examples"];
 	    let mut i =0;
 	    let path =
 		loop {
-		    if fs::metadata(paths[i]).is_ok() {break paths[i]};
+		    let mut new_name = Path::new(paths[i]).join(name);
+		    new_name = new_name.with_extension("json");
+		    if fs::metadata(new_name.clone()).is_ok() {break new_name};
 		    i=i+1;
-		    if i==paths.len() {panic!("No params.json file found in ./ , ~/ or examples/")}
+		    if i==paths.len() {panic!("No parameters file found")}
 		};
-	    println!("Parameter file {} found",path);
+	    println!("Parameter file {:?} found",path);
 	    let contents = fs::read_to_string(path)
 		.expect("Something went wrong reading the file");
 	    let stripped = StripComments::new(contents.as_bytes());
