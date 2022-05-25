@@ -8,7 +8,7 @@
     "scaling": 2, // 0: None, 1: sigma_truncation, 2: ranking
     "normalize": 1, // 0: None, 1: f(x)=x/max, 2: f(x)=(x-min)/(max-min)
     "elitist": true, // true: Protect overall best element
-    "sharing": 2, // 0: None, 1: Dynamic, 2: Dendogram
+    "sharing": 2, // 0: None, 1: Dynamic, 2: Dendrogram
     "dmax": 2.0, // Dynamic: max distance for same cluster, Dendogram: max dissimilarity
     "pmax": 0.0, // Dendogram: percentage of population as clusters
     "spenalty" : 1, // 0: None, 1: f/k, 2: f*(1-(k-1)/n)
