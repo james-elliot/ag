@@ -1,9 +1,16 @@
 use rand::{Rng,SeedableRng};
 use rayon::prelude::*;
-pub type Trng=rand_chacha::ChaCha8Rng;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use kodama::{Method, linkage};
+use serde::{Deserialize, Serialize};
+use json_comments::StripComments;
+use std::fs;
+use std::time::{Instant,Duration};
+use cpu_time::ProcessTime;
 
+
+pub type Trng=rand_chacha::ChaCha8Rng;
 pub trait ElemPop: Clone + Send +Sync {
     fn new(r: &mut Trng) -> Self;
     fn eval(&self) -> f64;
@@ -185,8 +192,6 @@ struct Cluster<T: ElemPop> {
     v_best: f64,
 }
 
-use kodama::{Method, linkage};
-
 fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluster<T>> {
     let mut clus: Vec<Cluster<T>> = Vec::with_capacity(p.len());
     let mut condensed = vec![];
@@ -302,7 +307,6 @@ fn get_bests<T: ElemPop>(mut clus: Vec<Cluster<T>>, mut nbest:Vec<usize>,sfactor
     return nbest;
 }
 
-use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Params {
     pub nb_elems: usize,
@@ -335,10 +339,6 @@ pub struct Timing {
     pub total:Duration
 }
 
-use std::fs;
-use json_comments::StripComments;
-use std::time::{Instant,Duration};
-use cpu_time::ProcessTime;
 pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timing,Timing) {
     let par:Params;
 
