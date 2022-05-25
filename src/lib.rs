@@ -1,9 +1,10 @@
 use rand::{Rng,SeedableRng};
 use rayon::prelude::*;
 pub type Trng=rand_chacha::ChaCha8Rng;
-use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-pub trait ElemPop: Clone + Send {
+pub trait ElemPop: Clone + Send +Sync {
     fn new(r: &mut Trng) -> Self;
     fn eval(&self) -> f64;
     fn dist(&self, u: &Self) -> f64;
@@ -14,7 +15,7 @@ pub trait ElemPop: Clone + Send {
 
 #[derive(Debug, Clone)]
 struct Chromosome<T: ElemPop> {
-    data: Rc<T>,
+    data: Arc<T>,
     r_fit: Option<f64>,
     s_fit: f64,
 }
@@ -78,7 +79,7 @@ fn scale_fitness<T: ElemPop>(mut p: Pop<T>,scaling: u64,normalize: u64) -> Pop<T
 
 fn eval_pop<T: ElemPop>(mut p: Pop<T>,par: bool, evolutive: bool) -> Pop<T> {
     if par {
-	p.iter_mut().for_each(|v| {
+	p.par_iter_mut().for_each(|v| {
 	    if v.r_fit == None || evolutive {v.r_fit = Some(v.data.eval())}
 	})
     }
@@ -92,7 +93,7 @@ fn eval_pop<T: ElemPop>(mut p: Pop<T>,par: bool, evolutive: bool) -> Pop<T> {
 
 fn new_pop<T: ElemPop>(nb_elems: usize,rng: &mut Trng) -> Pop<T> {
     let mut p: Pop<T> = Vec::with_capacity(nb_elems);
-    for _i in 0..nb_elems {p.push(Chromosome {data: Rc::new(ElemPop::new(rng)),r_fit: None,s_fit: 0.,})}
+    for _i in 0..nb_elems {p.push(Chromosome {data: Arc::new(ElemPop::new(rng)),r_fit: None,s_fit: 0.,})}
     return p;
 }
 
@@ -157,16 +158,16 @@ fn cross_mut<T: ElemPop>(mut oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f6
     for _i in 0..nb_mut {
         let ind = rng.gen_range(0..nb_elems);
         let d = oldp[ind].data.mutate(rng);
-        p.push(Chromosome {data: Rc::new(d),r_fit: None,s_fit: 0.,});
+        p.push(Chromosome {data: Arc::new(d),r_fit: None,s_fit: 0.,});
     }
     for _i in 0..nb_cross {
         let ind1 = rng.gen_range(0..nb_elems);
         let ind2 = (ind1 + rng.gen_range(0..nb_elems - 1) + 1) % nb_elems;
-        let mut a = Rc::make_mut(&mut oldp[ind1].data).clone();
-        let mut b = Rc::make_mut(&mut oldp[ind2].data).clone();
+        let mut a = Arc::make_mut(&mut oldp[ind1].data).clone();
+        let mut b = Arc::make_mut(&mut oldp[ind2].data).clone();
         ElemPop::cross(&mut a, &mut b, rng);
-        p.push(Chromosome {data: Rc::new(a),r_fit: None,s_fit: 0.,});
-        p.push(Chromosome {data: Rc::new(b),r_fit: None,s_fit: 0.,});
+        p.push(Chromosome {data: Arc::new(a),r_fit: None,s_fit: 0.,});
+        p.push(Chromosome {data: Arc::new(b),r_fit: None,s_fit: 0.,});
     }
     for _i in 0..nbr {
         let ind = rng.gen_range(0..nb_elems);
@@ -196,7 +197,7 @@ fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluste
     }
     for i in 0..p.len() {
 	let mut c = Cluster {
-	    center: Rc::make_mut(&mut p[i].data.clone()).clone(),
+	    center: Arc::make_mut(&mut p[i].data.clone()).clone(),
             elems: Vec::new(),
             nb_elems: 1,
             best: i,
@@ -245,7 +246,7 @@ fn dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
         }
         if bd > dmax {
             let mut c = Cluster {
-		center: Rc::make_mut(&mut e.data.clone()).clone(),
+		center: Arc::make_mut(&mut e.data.clone()).clone(),
                 elems: Vec::new(),
                 nb_elems: 1,
                 best: ind,
@@ -336,8 +337,6 @@ pub struct Timing {
 
 use std::fs;
 use json_comments::StripComments;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::{Instant,Duration};
 use cpu_time::ProcessTime;
 pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timing,Timing) {
@@ -450,7 +449,7 @@ pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timin
     let mut res = Vec::new();
     for i in bests.iter() {
 	let mut a = p[*i].data.clone();
-	let a = Rc::make_mut(&mut a).clone();
+	let a = Arc::make_mut(&mut a).clone();
 	res.push((a,p[*i].r_fit.unwrap()));
     }
     res.sort_by(|(_,v1), (_,v2)| v1.partial_cmp(v2).unwrap());
