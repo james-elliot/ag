@@ -1,6 +1,7 @@
 use rand::{Rng,SeedableRng};
 use rayon::prelude::*;
 pub type Trng=rand_chacha::ChaCha8Rng;
+use std::rc::Rc;
 
 pub trait ElemPop: Clone + Send {
     fn new(r: &mut Trng) -> Self;
@@ -13,7 +14,7 @@ pub trait ElemPop: Clone + Send {
 
 #[derive(Debug, Clone)]
 struct Chromosome<T: ElemPop> {
-    data: T,
+    data: Rc<T>,
     r_fit: Option<f64>,
     s_fit: f64,
 }
@@ -77,7 +78,7 @@ fn scale_fitness<T: ElemPop>(mut p: Pop<T>,scaling: u64,normalize: u64) -> Pop<T
 
 fn eval_pop<T: ElemPop>(mut p: Pop<T>,par: bool, evolutive: bool) -> Pop<T> {
     if par {
-	p.par_iter_mut().for_each(|v| {
+	p.iter_mut().for_each(|v| {
 	    if v.r_fit == None || evolutive {v.r_fit = Some(v.data.eval())}
 	})
     }
@@ -91,7 +92,7 @@ fn eval_pop<T: ElemPop>(mut p: Pop<T>,par: bool, evolutive: bool) -> Pop<T> {
 
 fn new_pop<T: ElemPop>(nb_elems: usize,rng: &mut Trng) -> Pop<T> {
     let mut p: Pop<T> = Vec::with_capacity(nb_elems);
-    for _i in 0..nb_elems {p.push(Chromosome {data: ElemPop::new(rng),r_fit: None,s_fit: 0.,})}
+    for _i in 0..nb_elems {p.push(Chromosome {data: Rc::new(ElemPop::new(rng)),r_fit: None,s_fit: 0.,})}
     return p;
 }
 
@@ -146,7 +147,7 @@ fn reproduce_pop<T: ElemPop>(mut oldp: Pop<T>, bests: &Vec<usize>, rng: &mut Trn
     return p;
 }
 
-fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, rng: &mut Trng) -> Pop<T> {
+fn cross_mut<T: ElemPop>(mut oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, rng: &mut Trng) -> Pop<T> {
     let nb_elems = oldp.len();
     let mut p: Pop<T> = Vec::with_capacity(nb_elems);
     let nb_cross = ((nb_elems as f64) * pcross / 2.0) as usize;
@@ -156,16 +157,16 @@ fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, r
     for _i in 0..nb_mut {
         let ind = rng.gen_range(0..nb_elems);
         let d = oldp[ind].data.mutate(rng);
-        p.push(Chromosome {data: d,r_fit: None,s_fit: 0.,});
+        p.push(Chromosome {data: Rc::new(d),r_fit: None,s_fit: 0.,});
     }
     for _i in 0..nb_cross {
         let ind1 = rng.gen_range(0..nb_elems);
         let ind2 = (ind1 + rng.gen_range(0..nb_elems - 1) + 1) % nb_elems;
-        let mut a = oldp[ind1].data.clone();
-        let mut b = oldp[ind2].data.clone();
+        let mut a = Rc::make_mut(&mut oldp[ind1].data).clone();
+        let mut b = Rc::make_mut(&mut oldp[ind2].data).clone();
         ElemPop::cross(&mut a, &mut b, rng);
-        p.push(Chromosome {data: a,r_fit: None,s_fit: 0.,});
-        p.push(Chromosome {data: b,r_fit: None,s_fit: 0.,});
+        p.push(Chromosome {data: Rc::new(a),r_fit: None,s_fit: 0.,});
+        p.push(Chromosome {data: Rc::new(b),r_fit: None,s_fit: 0.,});
     }
     for _i in 0..nbr {
         let ind = rng.gen_range(0..nb_elems);
@@ -195,11 +196,11 @@ fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluste
     }
     for i in 0..p.len() {
 	let mut c = Cluster {
-                center: p[i].data.clone(),
-                elems: Vec::new(),
-                nb_elems: 1,
-                best: i,
-                v_best: p[i].r_fit.unwrap(),
+	    center: Rc::make_mut(&mut p[i].data.clone()).clone(),
+            elems: Vec::new(),
+            nb_elems: 1,
+            best: i,
+            v_best: p[i].r_fit.unwrap(),
         };
         c.elems.push(i);
 	clus.push(c);
@@ -213,10 +214,11 @@ fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluste
 	if s.dissimilarity > dmax {break}
 	let (i,j) = (s.cluster1,s.cluster2);
 	let mut k = i;
-	if clus[j].v_best > clus[i].v_best {k=j}
+	if clus[j].v_best > clus[i].v_best {k=j};
 	let mut c = Cluster {
-            center: ElemPop::barycenter(&clus[i].center, &clus[j].center,
-					clus[i].nb_elems, clus[j].nb_elems), 
+            center: ElemPop::barycenter(
+		&clus[i].center,&clus[j].center,
+		clus[i].nb_elems, clus[j].nb_elems),
             elems: clus[i].elems.clone(),
             nb_elems: clus[i].nb_elems+clus[j].nb_elems,
             best: clus[k].best,
@@ -243,7 +245,7 @@ fn dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
         }
         if bd > dmax {
             let mut c = Cluster {
-                center: e.data.clone(),
+		center: Rc::make_mut(&mut e.data.clone()).clone(),
                 elems: Vec::new(),
                 nb_elems: 1,
                 best: ind,
@@ -254,7 +256,9 @@ fn dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
         }
 	else {
             let bi = bi.unwrap();
-            clus[bi].center = ElemPop::barycenter(&clus[bi].center, &e.data, clus[bi].nb_elems, 1);
+            clus[bi].center = ElemPop::barycenter(
+		&clus[bi].center, &e.data,
+		clus[bi].nb_elems, 1);
             clus[bi].nb_elems = clus[bi].nb_elems + 1;
             clus[bi].elems.push(ind);
             if e.r_fit.unwrap() > clus[bi].v_best {
@@ -445,7 +449,9 @@ pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timin
     
     let mut res = Vec::new();
     for i in bests.iter() {
-	res.push((p[*i].data.clone(),p[*i].r_fit.unwrap()));
+	let mut a = p[*i].data.clone();
+	let a = Rc::make_mut(&mut a).clone();
+	res.push((a,p[*i].r_fit.unwrap()));
     }
     res.sort_by(|(_,v1), (_,v2)| v1.partial_cmp(v2).unwrap());
     tpi.total=tpi.total.saturating_add(sptt.elapsed());
