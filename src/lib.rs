@@ -11,7 +11,7 @@ use cpu_time::ProcessTime;
 
 
 pub type Trng=rand_chacha::ChaCha8Rng;
-pub trait ElemPop: Clone + Send +Sync {
+pub trait ElemPop: Clone + Send +Sync + std::fmt::Debug {
     fn new(r: &mut Trng) -> Self;
     fn eval(&self) -> f64;
     fn dist(&self, u: &Self) -> f64;
@@ -44,10 +44,15 @@ fn normalize_hard<T: ElemPop>(mut p: Pop<T>) -> Pop<T> {
 
 fn normalize_simple<T: ElemPop>(mut p: Pop<T>) -> Pop<T> {
     let maxi = p.iter().fold(f64::NEG_INFINITY, |acc, x| acc.max(x.s_fit));
-    for v in p.iter_mut() {
-        if maxi == 0. {v.s_fit = 1.0}
-	else {v.s_fit = v.s_fit / maxi}
-    }
+    if maxi<=0. {panic!("All fitnesses <=0 in normalize_simple")}
+    for v in p.iter_mut() {v.s_fit = (v.s_fit / maxi).max(0.)}
+    return p;
+}
+
+fn normalize_none<T: ElemPop>(mut p: Pop<T>) -> Pop<T> {
+    let maxi = p.iter().fold(f64::NEG_INFINITY, |acc, x| acc.max(x.s_fit));
+    if maxi<=0. {panic!("All fitnesses <=0 in normalize_none")}
+    for v in p.iter_mut() {v.s_fit = v.s_fit.max(0.)}
     return p;
 }
 
@@ -76,7 +81,7 @@ fn scale_fitness<T: ElemPop>(mut p: Pop<T>,scaling: u64,normalize: u64) -> Pop<T
 	_ => panic!("SCALING invalid")
     }
     match normalize {
-	0 => {},
+	0 => p=normalize_none(p),
 	1 => p = normalize_simple(p),
 	2 => p = normalize_hard(p),
 	_ => panic!("NORMALIZE invalid")
@@ -100,7 +105,7 @@ fn eval_pop<T: ElemPop>(mut p: Pop<T>,par: bool, evolutive: bool) -> Pop<T> {
 
 fn new_pop<T: ElemPop>(nb_elems: usize,rng: &mut Trng) -> Pop<T> {
     let mut p: Pop<T> = Vec::with_capacity(nb_elems);
-    for _i in 0..nb_elems {p.push(Chromosome {data: Arc::new(ElemPop::new(rng)),r_fit: None,s_fit: 0.,})}
+    for _i in 0..nb_elems {p.push(Chromosome {data: Arc::new(ElemPop::new(rng)), r_fit: None, s_fit: 0.,})}
     return p;
 }
 
@@ -173,8 +178,8 @@ fn cross_mut<T: ElemPop>(mut oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f6
         let mut a = Arc::make_mut(&mut oldp[ind1].data).clone();
         let mut b = Arc::make_mut(&mut oldp[ind2].data).clone();
         ElemPop::cross(&mut a, &mut b, rng);
-        p.push(Chromosome {data: Arc::new(a),r_fit: None,s_fit: 0.,});
-        p.push(Chromosome {data: Arc::new(b),r_fit: None,s_fit: 0.,});
+        p.push(Chromosome {data: Arc::new(a), r_fit: None, s_fit: 0.,});
+        p.push(Chromosome {data: Arc::new(b), r_fit: None, s_fit: 0.,});
     }
     for _i in 0..nbr {
         let ind = rng.gen_range(0..nb_elems);
@@ -339,7 +344,8 @@ pub struct Timing {
     pub total:Duration
 }
 
-pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timing,Timing) {
+pub fn ag<T:ElemPop>(param:Option<Params>)-> (Vec<(T,f64)>,Timing,Timing) {
+//    pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timing,Timing) {
     let par:Params;
 
     match param {
@@ -448,9 +454,7 @@ pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timin
     
     let mut res = Vec::new();
     for i in bests.iter() {
-	let mut a = p[*i].data.clone();
-	let a = Arc::make_mut(&mut a).clone();
-	res.push((a,p[*i].r_fit.unwrap()));
+	res.push((Arc::make_mut(&mut p[*i].data.clone()).clone(),p[*i].r_fit.unwrap()));
     }
     res.sort_unstable_by(|(_,v1), (_,v2)| v1.partial_cmp(v2).unwrap());
     tpi.total=tpi.total.saturating_add(sptt.elapsed());

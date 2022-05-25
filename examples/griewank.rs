@@ -61,5 +61,5 @@ impl ElemPop for Data {
 
 fn main() {
     let (e,process_time,wall_clock_time) = ag::<Data>(None);
-    println!("Best: {:?}\nprocess_time:{:?}\nwall_clock_time:{:?}", e,process_time,wall_clock_time);
+    println!("Bests: {:?}\nprocess_time:{:?}\nwall_clock_time:{:?}", e,process_time,wall_clock_time);
 }

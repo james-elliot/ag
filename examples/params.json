@@ -6,7 +6,7 @@
     "pcross": 0.40, // Do nb_elems*pcross/2 crossovers
     "evolutive": false, // true: re-evaluate identical elements
     "scaling": 2, // 0: None, 1: sigma_truncation, 2: ranking
-    "normalize": 1, // 0: None, 1: f(x)=x/max, 2: f(x)=(x-min)/(max-min)
+    "normalize": 1, // 0: f(x)=max(0,x), 1: f(x)=max(0,x/maxi), 2: f(x)=(x-mini)/(maxi-mini)
     "elitist": true, // true: Protect overall best element
     "sharing": 2, // 0: None, 1: Dynamic, 2: Dendrogram
     "dmax": 2.0, // Dynamic: max distance for same cluster, Dendrogram: max dissimilarity
