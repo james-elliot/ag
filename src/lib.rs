@@ -62,7 +62,7 @@ fn sigma_truncation<T: ElemPop>(mut p: Pop<T>) -> Pop<T> {
 
 fn ranking<T: ElemPop>(mut p: Pop<T>) -> Pop<T> {
     let nb_elems = p.len();
-    p.sort_by(|a, b| b.s_fit.partial_cmp(&a.s_fit).unwrap());
+    p.sort_unstable_by(|a, b| b.s_fit.partial_cmp(&a.s_fit).unwrap());
     for (i, x) in p.iter_mut().enumerate() {x.s_fit = (nb_elems - i) as f64}
     return p;
 }
@@ -294,7 +294,7 @@ fn share_fitness<T: ElemPop>(mut p: Pop<T>, clus: &Vec<Cluster<T>>, spenalty : u
 
 fn get_bests<T: ElemPop>(mut clus: Vec<Cluster<T>>, mut nbest:Vec<usize>,sfactor: f64, mut max_best: u64) -> Vec<usize> {
     nbest.clear();
-    clus.sort_by(|a, b| b.v_best.partial_cmp(&a.v_best).unwrap());
+    clus.sort_unstable_by(|a, b| b.v_best.partial_cmp(&a.v_best).unwrap());
     let vbest = clus[0].v_best;
     for c in clus.iter() {
         if c.v_best >= vbest * sfactor {
@@ -452,7 +452,7 @@ pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timin
 	let a = Arc::make_mut(&mut a).clone();
 	res.push((a,p[*i].r_fit.unwrap()));
     }
-    res.sort_by(|(_,v1), (_,v2)| v1.partial_cmp(v2).unwrap());
+    res.sort_unstable_by(|(_,v1), (_,v2)| v1.partial_cmp(v2).unwrap());
     tpi.total=tpi.total.saturating_add(sptt.elapsed());
     twi.total=twi.total.saturating_add(swtt.elapsed());
     return (res,tpi,twi)
