@@ -1,10 +1,5 @@
-use ag::{ag,ElemPop,Trng};
-use rand::{Rng};
-
-#[derive(Debug, Clone)]
-struct Data {
-    v: Vec<f64>,
-}
+use ag::*;
+use rand::Rng;
 
 const SIZE: usize = 100;
 const MINV: f64 = -10.0;
@@ -16,13 +11,23 @@ fn scale(a: f64) -> f64 {
     else {return a}
 }
 
-impl ElemPop for Data {
-    fn new(r: &mut Trng) -> Data {
+struct UData {}
+impl UserData<EPop> for UData {
+    fn update(&mut self,_p: &Pop<EPop>) {
+    }
+}
+
+#[derive(Debug, Clone)]
+struct EPop {
+    v: Vec<f64>,
+}
+impl ElemPop for EPop {
+    fn new(r: &mut Trng) -> EPop {
 	let mut t = Vec::with_capacity(SIZE);
 	for _i in 0..SIZE {t.push(r.gen_range(MINV..MAXV))}
-        return Data {v: t};
+        return EPop {v: t};
     }
-    fn eval(&self) -> f64 {
+    fn eval<U:UserData<EPop>>(&self,_u:&U) -> f64 {
         let t = &self.v;
 	let (mut sum,mut prod) = (0.,1.);
 	for i in 0..SIZE {
@@ -37,13 +42,13 @@ impl ElemPop for Data {
 	for i in 0..SIZE {d = d+(t1[i]-t2[i])*(t1[i]-t2[i])}
         return d.sqrt();
     }
-    fn mutate(&self, r: &mut Trng) -> Data {
+    fn mutate(&self, r: &mut Trng) -> EPop {
 	let mut t = self.v.clone();
 	let i = r.gen_range(0..SIZE);
         t[i] = scale(t[i] + r.gen_range(-0.5..0.5));
-        return Data {v: t}
+        return EPop {v: t}
     }
-    fn cross(e1: &mut Data,e2: &mut Data,r: &mut Trng) {
+    fn cross(e1: &mut EPop,e2: &mut EPop,r: &mut Trng) {
         let a: f64 = r.gen_range(-0.5..1.5);
 	let i = r.gen_range(0..SIZE);
         let b1 = a * e1.v[i] + (1.0 - a) * e2.v[i];
@@ -55,11 +60,12 @@ impl ElemPop for Data {
 	let mut t = Vec::with_capacity(SIZE);
         let (fn1,fn2) = (n1 as f64,n2 as f64);
 	for i in 0..SIZE {t.push((fn1 * e1.v[i] + fn2 * e2.v[i]) / (fn1 + fn2))}
-        return Data {v:t};
+        return EPop {v:t};
     }
 }
 
 fn main() {
-    let (e,process_time,wall_clock_time) = ag::<Data>(None);
+    let mut u = UData {};
+    let (e,process_time,wall_clock_time) = ag::<EPop,UData>(None,&mut u);
     println!("Bests: {:?}\nprocess_time:{:?}\nwall_clock_time:{:?}", e,process_time,wall_clock_time);
 }

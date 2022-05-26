@@ -12,9 +12,12 @@ use cpu_time::ProcessTime;
 
 
 pub type Trng=rand_chacha::ChaCha8Rng;
+pub trait UserData<T:ElemPop>: Send +Sync {
+    fn update(&mut self,p: &Pop<T>);
+}
 pub trait ElemPop: Clone + Send +Sync + std::fmt::Debug {
     fn new(r: &mut Trng) -> Self;
-    fn eval(&self) -> f64;
+    fn eval<U:UserData<Self>>(&self,u:&U) -> f64;
     fn dist(&self, u: &Self) -> f64;
     fn mutate(&self, r: &mut Trng) -> Self;
     fn cross(e1: &mut Self,e2: &mut Self,r: &mut Trng);
@@ -22,12 +25,12 @@ pub trait ElemPop: Clone + Send +Sync + std::fmt::Debug {
 }
 
 #[derive(Debug, Clone)]
-struct Chromosome<T: ElemPop> {
-    data: Arc<T>,
-    r_fit: Option<f64>,
+pub struct Chromosome<T: ElemPop> {
+    pub data: Arc<T>,
+    pub r_fit: Option<f64>,
     s_fit: f64,
 }
-type Pop<T> = Vec<Chromosome<T>>;
+pub type Pop<T> = Vec<Chromosome<T>>;
 
 fn normalize_hard<T: ElemPop>(mut p: Pop<T>) -> Pop<T> {
     let (mini, maxi) = p
@@ -90,15 +93,15 @@ fn scale_fitness<T: ElemPop>(mut p: Pop<T>,scaling: u64,normalize: u64) -> Pop<T
     return p;
 }
 
-fn eval_pop<T: ElemPop>(mut p: Pop<T>,par: bool, evolutive: bool) -> Pop<T> {
+fn eval_pop<T: ElemPop, U:UserData<T>>(mut p: Pop<T>,u:&U, par: bool, evolutive: bool) -> Pop<T> {
     if par {
 	p.par_iter_mut().for_each(|v| {
-	    if v.r_fit == None || evolutive {v.r_fit = Some(v.data.eval())}
+	    if v.r_fit == None || evolutive {v.r_fit = Some(v.data.eval(u))}
 	})
     }
     else {
 	p.iter_mut().for_each(|v| {
-	    if v.r_fit == None || evolutive {v.r_fit = Some(v.data.eval())}
+	    if v.r_fit == None || evolutive {v.r_fit = Some(v.data.eval(u))}
 	})
     }
     return p;
@@ -345,8 +348,7 @@ pub struct Timing {
     pub total:Duration
 }
 
-pub fn ag<T:ElemPop>(param:Option<Params>)-> (Vec<(T,f64)>,Timing,Timing) {
-    //    pub fn ag<T:ElemPop+std::fmt::Debug>(param:Option<Params>)-> (Vec<(T,f64)>,Timing,Timing) {
+pub fn ag<T:ElemPop,U:UserData<T>>(param:Option<Params>,u:&mut U)-> (Vec<(T,f64)>,Timing,Timing) {
     let args: Vec<String> = env::args().collect();
     let path = Path::new(&args[0]);
     let name = path.file_name().unwrap();
@@ -401,7 +403,7 @@ pub fn ag<T:ElemPop>(param:Option<Params>)-> (Vec<(T,f64)>,Timing,Timing) {
     loop {
 	bests.clear();
 	let (spt,swt) = (ProcessTime::now(),Instant::now());
-        p = eval_pop(p,par.parallel,par.evolutive);
+        p = eval_pop(p,u,par.parallel,par.evolutive);
 	tpi.eval=tpi.eval.saturating_add(spt.elapsed());
 	twi.eval=twi.eval.saturating_add(swt.elapsed());
 	let ibest = find_best(&p);
@@ -444,6 +446,8 @@ pub fn ag<T:ElemPop>(param:Option<Params>)-> (Vec<(T,f64)>,Timing,Timing) {
 	    break
 	}
 	num=num+1;
+
+	u.update(&p);
 	
 	let (spt,swt) = (ProcessTime::now(),Instant::now());
         p = reproduce_pop(p, &bests,&mut rng);
