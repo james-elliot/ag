@@ -66,6 +66,6 @@ impl ElemPop for EPop {
 
 fn main() {
     let mut u = UData {};
-    let (e,process_time,wall_clock_time) = ag::<EPop,UData>(None,&mut u);
-    println!("Bests: {:?}\nprocess_time:{:?}\nwall_clock_time:{:?}", e,process_time,wall_clock_time);
+    let (bests,ptime,wtime) = ag::<EPop,UData>(None,&mut u);
+    println!("Bests: {:?}\nprocess_time: {:?}\nwall_clock_time: {:?}", bests,ptime,wtime);
 }

@@ -10,22 +10,38 @@ use std::path::Path;
 use std::time::{Instant,Duration};
 use cpu_time::ProcessTime;
 
-
+// Type of the random number generator
 pub type Trng=rand_chacha::ChaCha8Rng;
+
+// The UserData structs contains information useful for evaluating elements
+// It can be updated at the end of each generation using new informations about the population
+// Send and Sync are necessary for parallel evaluation
 pub trait UserData<T:ElemPop>: Send +Sync {
     fn update(&mut self,p: &Pop<T>);
 }
+
+// The "classical" functions for a GA
 pub trait ElemPop: Clone + Send +Sync + std::fmt::Debug {
     fn new(r: &mut Trng) -> Self;
+    // The element can be modified in place when it is evaluated
+    // Sometimes useful when we run a new random simulation at each evaluation
+    // Example: the automatic building of evaluation functions for games
+    // where an element fitness depends on the results and new games are played at each evaluation
     fn eval<U:UserData<Self>>(&mut self,u:&U) -> f64;
     fn dist(&self, u: &Self) -> f64;
+    // mutate returns the new mutated element
     fn mutate(&self, r: &mut Trng) -> Self;
+    // As it is impossible to return two elements with unlnow size
+    // cross takes two copies and modify them "in place"
     fn cross(e1: &mut Self,e2: &mut Self,r: &mut Trng);
     fn barycenter(e1: &Self, e2: &Self, n1: u32, n2: u32) -> Self;
 }
 
 #[derive(Debug, Clone)]
 pub struct Chromosome<T: ElemPop> {
+    // Using Arc<Mutex<T>> for preventing unnecessary copies
+    // Also useful for never crossing identical elements
+    // It is possible to evaluate in parallel elements and modify them in place during evaluation
     pub data: Arc<Mutex<T>>,
     pub r_fit: Option<f64>,
     s_fit: f64,
@@ -76,7 +92,7 @@ fn ranking<T: ElemPop>(mut p: Pop<T>) -> Pop<T> {
     return p;
 }
 
-fn scale_fitness<T: ElemPop>(mut p: Pop<T>,scaling: u64,normalize: u64) -> Pop<T> {
+fn scale_fitness<T: ElemPop>(mut p: Pop<T>,scaling: u32,normalize: u32) -> Pop<T> {
     for x in p.iter_mut() {x.s_fit = x.r_fit.unwrap();}
     match scaling {
 	0 => {},
@@ -115,7 +131,12 @@ fn eval_pop<T: ElemPop, U:UserData<T>>(mut p: Pop<T>,u:&U, par: bool, evolutive:
 
 fn new_pop<T: ElemPop>(nb_elems: usize,rng: &mut Trng) -> Pop<T> {
     let mut p: Pop<T> = Vec::with_capacity(nb_elems);
-    for _i in 0..nb_elems {p.push(Chromosome {data: Arc::new(Mutex::new(ElemPop::new(rng))), r_fit: None, s_fit: 0.,})}
+    for _i in 0..nb_elems {
+	p.push(
+	    Chromosome {
+		data: Arc::new(Mutex::new(ElemPop::new(rng))),
+		r_fit: None,
+		s_fit: 0.,})}
     return p;
 }
 
@@ -134,32 +155,42 @@ fn reproduce_pop<T: ElemPop>(mut oldp: Pop<T>, bests: &Vec<usize>, rng: &mut Trn
     let mut p: Pop<T> = Vec::with_capacity(nb_elems);
     let mut rmt: Vec<f64> = Vec::with_capacity(nb_elems);
 
+    // The s_fitness is set to the number of copies
     let ssum1 = oldp.iter().fold(0., |acc, x| acc + x.s_fit);
     for e in oldp.iter_mut() {e.s_fit = e.s_fit / ssum1 * (nb_elems as f64)+1e-10}
     let mut t_rem = nb_elems as i64;
+    // Put protected elements at the beginning of the vector
     for ind in bests.iter() {
         p.push(oldp[*ind].clone());
         oldp[*ind].s_fit = (0.0_f64).max(oldp[*ind].s_fit - 1.);
         t_rem = t_rem - 1;
     }
+    // We recompute the sum of s_fit as we have modified it for protected elements
     let ssum2 = oldp.iter().fold(0., |acc, x| acc + x.s_fit);
     let mut sum = 0;
     let mut fsum = 0.0;
     for v in oldp.iter() {
+	// We put a number of copies equal to the integer part of the ratio of s_fit and sum(s_fit) multiplied
+	// by the number of remaining slots
         let nb = (t_rem as f64) * v.s_fit / ssum2;
         let inb = nb as i64;
         let rem = nb - (inb as f64);
         sum = sum + inb;
         fsum = fsum + rem;
+	// We create the remainders array
         rmt.push(rem);
         for _i in 0..inb {p.push(v.clone())}
     }
+    // The remainders array is now a %
     for v in rmt.iter_mut() {*v = *v / fsum}
     let mut prev = 0.;
+    // It becomes a cumulative %
     for v in rmt.iter_mut() {*v = *v + prev;prev = *v}
+    // Number of remaining slots
     let rem = t_rem - sum;
     for _i in 0..rem {
 	let f = rng.gen_range(0.0..1.0);
+	// We use a dichotomic search to find the element, so O(log(n)) for each search, at most O(n log(n))
 	let (mut up,mut low)=(nb_elems-1,0);
 	while up!=low {
 	    let med = (up+low)/2;
@@ -167,6 +198,7 @@ fn reproduce_pop<T: ElemPop>(mut oldp: Pop<T>, bests: &Vec<usize>, rng: &mut Trn
 	}
 	p.push(oldp[up].clone());
     }
+    assert_eq!(p.len(),nb_elems);
     return p;
 }
 
@@ -176,26 +208,16 @@ fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, r
     let nb_cross = ((nb_elems as f64) * pcross / 2.0) as usize;
     let nb_mut = ((nb_elems as f64) * pmut) as usize;
     let nbr = (nb_elems as usize) - nb_prot - nb_mut - nb_cross * 2;
+    // Save protected elements
     for i in 0..nb_prot {p.push(oldp[i].clone())}
+    // Do mutations
     for _i in 0..nb_mut {
         let ind = rng.gen_range(0..nb_elems);
         let d = oldp[ind].data.lock().unwrap().mutate(rng);
         p.push(Chromosome {data: Arc::new(Mutex::new(d)),r_fit: None,s_fit: 0.,});
     }
+    // Do crossovers
     for _i in 0..nb_cross {
-	/*
-	        let ind1 = rng.gen_range(0..nb_elems);
-        let ind2 = (ind1 + rng.gen_range(0..nb_elems - 1) + 1) % nb_elems;
-	let da = oldp[ind1].data.lock().unwrap();
-        let mut a = da.clone();
-	drop(da);
-	let db = oldp[ind2].data.lock().unwrap();
-	let mut b = db.clone();
-	drop(db);
-        ElemPop::cross(&mut a, &mut b, rng);
-        p.push(Chromosome {data: Arc::new(Mutex::new(a)), r_fit: None, s_fit: 0.,});
-        p.push(Chromosome {data: Arc::new(Mutex::new(b)), r_fit: None, s_fit: 0.,});
-	 */
 	let mut cnt = 0;
 	loop {
 	    let ind1 = rng.gen_range(0..nb_elems);
@@ -209,10 +231,8 @@ fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, r
 		    if cnt==nb_elems {
 			// However if we have already tried nb_elems time we give up and simply copy them with a warning message
 			println!("Warning!!!! Many identical elements!!!!");
-			let a = da.clone();
-			let b = da.clone();
-			p.push(Chromosome {data: Arc::new(Mutex::new(a)), r_fit: None, s_fit: 0.,});
-			p.push(Chromosome {data: Arc::new(Mutex::new(b)), r_fit: None, s_fit: 0.,});
+			p.push(oldp[ind1].clone());
+			p.push(oldp[ind2].clone());
 			break;
 		    }
 		}
@@ -227,10 +247,19 @@ fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, r
 	    }
 	}
     }
+    // Fill the rest
     for _i in 0..nbr {
-        let ind = rng.gen_range(0..nb_elems);
-        p.push(oldp[ind].clone());
+	// If we can, fill with elements outside the protected ones in order to maintain maximal diversity
+	if nb_prot!=nb_elems {
+            let ind = rng.gen_range(nb_prot..nb_elems);
+            p.push(oldp[ind].clone());
+	}
+	else {
+            let ind = rng.gen_range(0..nb_elems);
+            p.push(oldp[ind].clone());
+	}
     }
+    assert_eq!(p.len(),nb_elems);
     return p;
 }
 
@@ -239,12 +268,26 @@ struct Cluster<T: ElemPop> {
     center: T,
     elems: Vec<usize>,
     nb_elems: u32,
-    best: usize,
-    v_best: f64,
+    best: usize, // index of the best element of the cluster
+    v_best: f64, // value of the r_fitness of the best element
 }
 
+// dendrograms are stable. The result doesn't depend of the order of the elements
 fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluster<T>> {
+    // Each element is its own cluster
     let mut clus: Vec<Cluster<T>> = Vec::with_capacity(p.len());
+    for i in 0..p.len() {
+	let mut c = Cluster {
+	    center: p[i].data.lock().unwrap().clone(),
+            elems: Vec::new(),
+            nb_elems: 1,
+            best: i,
+            v_best: p[i].r_fit.unwrap(),
+        };
+        c.elems.push(i);
+	clus.push(c);
+    }
+    // Compute dendrograms
     let mut condensed = vec![];
     for row in 0..p.len() - 1 {
         for col in row + 1..p.len() {
@@ -256,29 +299,22 @@ fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluste
 	    }
         }
     }
-    for i in 0..p.len() {
-	let cd=p[i].data.lock().unwrap();
-	let mut c = Cluster {
-	    center: cd.clone(),
-            elems: Vec::new(),
-            nb_elems: 1,
-            best: i,
-            v_best: p[i].r_fit.unwrap(),
-        };
-        c.elems.push(i);
-	clus.push(c);
-    }
     let dend = linkage(&mut condensed, p.len(), Method::Average);
     let steps = dend.steps();
     let nb_clus_max = ((p.len() as f64) * pmax+0.5) as usize;
     let mut nb_clus = p.len();
     for s in steps.iter() {
+	// If we have reached the desired number of clusters, break
 	if nb_clus <= nb_clus_max {break}
+	// If dissimilarity is larger than maximal dissimilarity, break
 	if s.dissimilarity > dmax {break}
+	// Merge the two clusters
 	let (i,j) = (s.cluster1,s.cluster2);
 	let mut k = i;
 	if clus[j].v_best > clus[i].v_best {k=j};
 	let mut c = Cluster {
+	    // With dendrograms, the position of the cluster center is not used for clustering.
+	    // It might however be an interesting information
             center: ElemPop::barycenter(
 		&clus[i].center,&clus[j].center,
 		clus[i].nb_elems, clus[j].nb_elems),
@@ -297,6 +333,7 @@ fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluste
     return clus;
 }
 
+// dynamic clustering is "unstable" as the order of elements modify the results
 fn dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
     let nb_elems = p.len();
     let mut clus: Vec<Cluster<T>> = Vec::with_capacity(nb_elems);
@@ -307,6 +344,7 @@ fn dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
             if dist < bd {bd = dist;bi = Some(ic)}
         }
         if bd > dmax {
+	    // Create a new cluster with this element as center, as it is further than dmax of all existing cluster centers
             let mut c = Cluster {
 		center: e.data.lock().unwrap().clone(),
                 elems: Vec::new(),
@@ -318,6 +356,7 @@ fn dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
             clus.push(c);
         }
 	else {
+	    // Merge this element with the closest cluster and modify accordingly the cluster center
             let bi = bi.unwrap();
             clus[bi].center = ElemPop::barycenter(
 		&clus[bi].center, &e.data.lock().unwrap(),
@@ -333,7 +372,7 @@ fn dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
     return clus;
 }
 
-fn share_fitness<T: ElemPop>(mut p: Pop<T>, clus: &Vec<Cluster<T>>, spenalty : u64) -> Pop<T> {
+fn share_fitness<T: ElemPop>(mut p: Pop<T>, clus: &Vec<Cluster<T>>, spenalty : u32) -> Pop<T> {
     let nb = p.len() as f64;
     for c in clus.iter() {
 	let k = c.nb_elems as f64;
@@ -349,7 +388,7 @@ fn share_fitness<T: ElemPop>(mut p: Pop<T>, clus: &Vec<Cluster<T>>, spenalty : u
     return p;
 }
 
-fn get_bests<T: ElemPop>(mut clus: Vec<Cluster<T>>, mut nbest:Vec<usize>,sfactor: f64, mut max_best: u64) -> Vec<usize> {
+fn get_bests<T: ElemPop>(mut clus: Vec<Cluster<T>>, mut nbest:Vec<usize>,sfactor: f64, mut max_best: u32) -> Vec<usize> {
     nbest.clear();
     clus.sort_unstable_by(|a, b| b.v_best.partial_cmp(&a.v_best).unwrap());
     let vbest = clus[0].v_best;
@@ -367,20 +406,20 @@ fn get_bests<T: ElemPop>(mut clus: Vec<Cluster<T>>, mut nbest:Vec<usize>,sfactor
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Params {
     pub nb_elems: usize,
-    pub nb_gen: u64,
+    pub nb_gen: u32,
     pub pmut: f64,
     pub pcross: f64,
     pub evolutive: bool,
-    pub scaling: u64,
-    pub normalize: u64,
+    pub scaling: u32,
+    pub normalize: u32,
     pub elitist: bool,
-    pub sharing: u64,
+    pub sharing: u32,
     pub sfactor: f64,
     pub dmax: f64,
     pub pmax: f64,
-    pub spenalty : u64,
+    pub spenalty : u32,
     pub parallel: bool,
-    pub verbose:u64,
+    pub verbose:u32,
     pub seed: u64,
     pub ctrlc: bool
 }
@@ -435,6 +474,7 @@ pub fn ag<T:ElemPop,U:UserData<T>>(param:Option<Params>,u:&mut U)-> (Vec<(T,f64)
     }
 
     if par.parallel {
+	// We only want to use the number of physical cpus
 	let nb = num_cpus::get_physical();
 	rayon::ThreadPoolBuilder::new().num_threads(nb).build_global().unwrap();
 	if par.verbose>=1 {println!("Using {} cpus",nb)}
@@ -480,7 +520,7 @@ pub fn ag<T:ElemPop,U:UserData<T>>(param:Option<Params>,u:&mut U)-> (Vec<(T,f64)
 	    if par.verbose>=2 {println!("nb_clus={:?}",clusters.len())}
 	    if par.sfactor<=1.0 {
 		let (spt,swt) = (ProcessTime::now(),Instant::now());
-		let max_best = ((par.nb_elems as f64) * (1.0 - par.pmut - par.pcross)) as u64;
+		let max_best = ((par.nb_elems as f64) * (1.0 - par.pmut - par.pcross)) as u32;
 		bests = get_bests(clusters, bests,par.sfactor, max_best);
 		tpi.sshare=tpi.sshare.saturating_add(spt.elapsed());
 		twi.sshare=twi.sshare.saturating_add(swt.elapsed());
@@ -495,6 +535,7 @@ pub fn ag<T:ElemPop,U:UserData<T>>(param:Option<Params>,u:&mut U)-> (Vec<(T,f64)
 	}
 	num=num+1;
 
+	// Update global data and enable the "outside" part to access all information about the population
 	u.update(&p);
 	
 	let (spt,swt) = (ProcessTime::now(),Instant::now());
