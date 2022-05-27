@@ -27,7 +27,7 @@ impl ElemPop for EPop {
 	for _i in 0..SIZE {t.push(r.gen_range(MINV..MAXV))}
         return EPop {v: t};
     }
-    fn eval<U:UserData<EPop>>(&self,_u:&U) -> f64 {
+    fn eval<U:UserData<EPop>>(&mut self,_u:&U) -> f64 {
         let t = &self.v;
 	let (mut sum,mut prod) = (0.,1.);
 	for i in 0..SIZE {

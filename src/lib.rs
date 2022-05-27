@@ -17,7 +17,7 @@ pub trait UserData<T:ElemPop>: Send +Sync {
 }
 pub trait ElemPop: Clone + Send +Sync + std::fmt::Debug {
     fn new(r: &mut Trng) -> Self;
-    fn eval<U:UserData<Self>>(&self,u:&U) -> f64;
+    fn eval<U:UserData<Self>>(&mut self,u:&U) -> f64;
     fn dist(&self, u: &Self) -> f64;
     fn mutate(&self, r: &mut Trng) -> Self;
     fn cross(e1: &mut Self,e2: &mut Self,r: &mut Trng);
@@ -97,18 +97,16 @@ fn eval_pop<T: ElemPop, U:UserData<T>>(mut p: Pop<T>,u:&U, par: bool, evolutive:
     if par {
 	p.par_iter_mut().for_each(|v| {
 	    if v.r_fit == None || evolutive {
-		let e = v.data.lock().unwrap();
+		let mut e = v.data.lock().unwrap();
 		v.r_fit = Some(e.eval(u));
-		drop(e);
 	    }
 	})
     }
     else {
 	p.iter_mut().for_each(|v| {
 	    if v.r_fit == None || evolutive {
-		let e = v.data.lock().unwrap();
+		let mut e = v.data.lock().unwrap();
 		v.r_fit = Some(e.eval(u));
-		drop(e);
 	    }
 	})
     }
@@ -181,13 +179,12 @@ fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, r
     for i in 0..nb_prot {p.push(oldp[i].clone())}
     for _i in 0..nb_mut {
         let ind = rng.gen_range(0..nb_elems);
-	let e = oldp[ind].data.lock().unwrap();
-        let d = e.mutate(rng);
-	drop(e);
+        let d = oldp[ind].data.lock().unwrap().mutate(rng);
         p.push(Chromosome {data: Arc::new(Mutex::new(d)),r_fit: None,s_fit: 0.,});
     }
     for _i in 0..nb_cross {
-        let ind1 = rng.gen_range(0..nb_elems);
+	/*
+	        let ind1 = rng.gen_range(0..nb_elems);
         let ind2 = (ind1 + rng.gen_range(0..nb_elems - 1) + 1) % nb_elems;
 	let da = oldp[ind1].data.lock().unwrap();
         let mut a = da.clone();
@@ -198,6 +195,37 @@ fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, r
         ElemPop::cross(&mut a, &mut b, rng);
         p.push(Chromosome {data: Arc::new(Mutex::new(a)), r_fit: None, s_fit: 0.,});
         p.push(Chromosome {data: Arc::new(Mutex::new(b)), r_fit: None, s_fit: 0.,});
+	 */
+	let mut cnt = 0;
+	loop {
+	    let ind1 = rng.gen_range(0..nb_elems);
+            let ind2 = (ind1 + rng.gen_range(0..nb_elems - 1) + 1) % nb_elems;
+	    let da = oldp[ind1].data.lock().unwrap();
+	    let db = oldp[ind2].data.try_lock();
+	    match db {
+		Err(_) => {
+		    // da and db are identical, we try to find different another pair with different parents
+		    cnt=cnt+1;
+		    if cnt==nb_elems {
+			// However if we have already tried nb_elems time we give up and simply copy them with a warning message
+			println!("Warning!!!! Many identical elements!!!!");
+			let a = da.clone();
+			let b = da.clone();
+			p.push(Chromosome {data: Arc::new(Mutex::new(a)), r_fit: None, s_fit: 0.,});
+			p.push(Chromosome {data: Arc::new(Mutex::new(b)), r_fit: None, s_fit: 0.,});
+			break;
+		    }
+		}
+		Ok(guard) => {
+		    let mut a = da.clone();
+		    let mut b = guard.clone();
+		    ElemPop::cross(&mut a, &mut b, rng);
+		    p.push(Chromosome {data: Arc::new(Mutex::new(a)), r_fit: None, s_fit: 0.,});
+		    p.push(Chromosome {data: Arc::new(Mutex::new(b)), r_fit: None, s_fit: 0.,});
+		    break;
+		}
+	    }
+	}
     }
     for _i in 0..nbr {
         let ind = rng.gen_range(0..nb_elems);
@@ -223,15 +251,8 @@ fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluste
 	    let e1 = p[row].data.lock().unwrap();
 	    let e2 = p[col].data.try_lock();
 	    match e2 {
-		Err(_) =>  {
-		    drop(e1);
-		    condensed.push(0.)
-		}
-		Ok(guard) => {
-		    condensed.push(e1.dist(&guard));
-		    drop(guard);
-		    drop(e1);
-		}
+		Err(_) =>  condensed.push(0.), // Can't get a lock because e1 and e2 are identical, so d=0
+		Ok(guard) => condensed.push(e1.dist(&guard))
 	    }
         }
     }
@@ -244,7 +265,6 @@ fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluste
             best: i,
             v_best: p[i].r_fit.unwrap(),
         };
-	drop(cd);
         c.elems.push(i);
 	clus.push(c);
     }
