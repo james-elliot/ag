@@ -1,7 +1,7 @@
 use rand::{Rng,SeedableRng};
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc,Mutex};
 use kodama::{Method, linkage};
 use serde::{Deserialize, Serialize};
 use json_comments::StripComments;
@@ -26,7 +26,7 @@ pub trait ElemPop: Clone + Send +Sync + std::fmt::Debug {
 
 #[derive(Debug, Clone)]
 pub struct Chromosome<T: ElemPop> {
-    pub data: Arc<T>,
+    pub data: Arc<Mutex<T>>,
     pub r_fit: Option<f64>,
     s_fit: f64,
 }
@@ -96,12 +96,20 @@ fn scale_fitness<T: ElemPop>(mut p: Pop<T>,scaling: u64,normalize: u64) -> Pop<T
 fn eval_pop<T: ElemPop, U:UserData<T>>(mut p: Pop<T>,u:&U, par: bool, evolutive: bool) -> Pop<T> {
     if par {
 	p.par_iter_mut().for_each(|v| {
-	    if v.r_fit == None || evolutive {v.r_fit = Some(v.data.eval(u))}
+	    if v.r_fit == None || evolutive {
+		let e = v.data.lock().unwrap();
+		v.r_fit = Some(e.eval(u));
+		drop(e);
+	    }
 	})
     }
     else {
 	p.iter_mut().for_each(|v| {
-	    if v.r_fit == None || evolutive {v.r_fit = Some(v.data.eval(u))}
+	    if v.r_fit == None || evolutive {
+		let e = v.data.lock().unwrap();
+		v.r_fit = Some(e.eval(u));
+		drop(e);
+	    }
 	})
     }
     return p;
@@ -109,7 +117,7 @@ fn eval_pop<T: ElemPop, U:UserData<T>>(mut p: Pop<T>,u:&U, par: bool, evolutive:
 
 fn new_pop<T: ElemPop>(nb_elems: usize,rng: &mut Trng) -> Pop<T> {
     let mut p: Pop<T> = Vec::with_capacity(nb_elems);
-    for _i in 0..nb_elems {p.push(Chromosome {data: Arc::new(ElemPop::new(rng)), r_fit: None, s_fit: 0.,})}
+    for _i in 0..nb_elems {p.push(Chromosome {data: Arc::new(Mutex::new(ElemPop::new(rng))), r_fit: None, s_fit: 0.,})}
     return p;
 }
 
@@ -164,7 +172,7 @@ fn reproduce_pop<T: ElemPop>(mut oldp: Pop<T>, bests: &Vec<usize>, rng: &mut Trn
     return p;
 }
 
-fn cross_mut<T: ElemPop>(mut oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, rng: &mut Trng) -> Pop<T> {
+fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, rng: &mut Trng) -> Pop<T> {
     let nb_elems = oldp.len();
     let mut p: Pop<T> = Vec::with_capacity(nb_elems);
     let nb_cross = ((nb_elems as f64) * pcross / 2.0) as usize;
@@ -173,17 +181,23 @@ fn cross_mut<T: ElemPop>(mut oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f6
     for i in 0..nb_prot {p.push(oldp[i].clone())}
     for _i in 0..nb_mut {
         let ind = rng.gen_range(0..nb_elems);
-        let d = oldp[ind].data.mutate(rng);
-        p.push(Chromosome {data: Arc::new(d),r_fit: None,s_fit: 0.,});
+	let e = oldp[ind].data.lock().unwrap();
+        let d = e.mutate(rng);
+	drop(e);
+        p.push(Chromosome {data: Arc::new(Mutex::new(d)),r_fit: None,s_fit: 0.,});
     }
     for _i in 0..nb_cross {
         let ind1 = rng.gen_range(0..nb_elems);
         let ind2 = (ind1 + rng.gen_range(0..nb_elems - 1) + 1) % nb_elems;
-        let mut a = Arc::make_mut(&mut oldp[ind1].data).clone();
-        let mut b = Arc::make_mut(&mut oldp[ind2].data).clone();
+	let da = oldp[ind1].data.lock().unwrap();
+        let mut a = da.clone();
+	drop(da);
+	let db = oldp[ind2].data.lock().unwrap();
+	let mut b = db.clone();
+	drop(db);
         ElemPop::cross(&mut a, &mut b, rng);
-        p.push(Chromosome {data: Arc::new(a), r_fit: None, s_fit: 0.,});
-        p.push(Chromosome {data: Arc::new(b), r_fit: None, s_fit: 0.,});
+        p.push(Chromosome {data: Arc::new(Mutex::new(a)), r_fit: None, s_fit: 0.,});
+        p.push(Chromosome {data: Arc::new(Mutex::new(b)), r_fit: None, s_fit: 0.,});
     }
     for _i in 0..nbr {
         let ind = rng.gen_range(0..nb_elems);
@@ -206,17 +220,31 @@ fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluste
     let mut condensed = vec![];
     for row in 0..p.len() - 1 {
         for col in row + 1..p.len() {
-            condensed.push(p[row].data.dist(&p[col].data));
+	    let e1 = p[row].data.lock().unwrap();
+	    let e2 = p[col].data.try_lock();
+	    match e2 {
+		Err(_) =>  {
+		    drop(e1);
+		    condensed.push(0.)
+		}
+		Ok(guard) => {
+		    condensed.push(e1.dist(&guard));
+		    drop(guard);
+		    drop(e1);
+		}
+	    }
         }
     }
     for i in 0..p.len() {
+	let cd=p[i].data.lock().unwrap();
 	let mut c = Cluster {
-	    center: Arc::make_mut(&mut p[i].data.clone()).clone(),
+	    center: cd.clone(),
             elems: Vec::new(),
             nb_elems: 1,
             best: i,
             v_best: p[i].r_fit.unwrap(),
         };
+	drop(cd);
         c.elems.push(i);
 	clus.push(c);
     }
@@ -255,12 +283,12 @@ fn dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
     for (ind, e) in p.iter().enumerate() {
         let (mut bd,mut bi) = (f64::INFINITY,None);
         for (ic, c) in clus.iter().enumerate() {
-            let dist = e.data.dist(&c.center);
+            let dist = e.data.lock().unwrap().dist(&c.center);
             if dist < bd {bd = dist;bi = Some(ic)}
         }
         if bd > dmax {
             let mut c = Cluster {
-		center: Arc::make_mut(&mut e.data.clone()).clone(),
+		center: e.data.lock().unwrap().clone(),
                 elems: Vec::new(),
                 nb_elems: 1,
                 best: ind,
@@ -272,7 +300,7 @@ fn dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
 	else {
             let bi = bi.unwrap();
             clus[bi].center = ElemPop::barycenter(
-		&clus[bi].center, &e.data,
+		&clus[bi].center, &e.data.lock().unwrap(),
 		clus[bi].nb_elems, 1);
             clus[bi].nb_elems = clus[bi].nb_elems + 1;
             clus[bi].elems.push(ind);
@@ -464,7 +492,7 @@ pub fn ag<T:ElemPop,U:UserData<T>>(param:Option<Params>,u:&mut U)-> (Vec<(T,f64)
     
     let mut res = Vec::new();
     for i in bests.iter() {
-	res.push((Arc::make_mut(&mut p[*i].data.clone()).clone(),p[*i].r_fit.unwrap()));
+	res.push((p[*i].data.lock().unwrap().clone(),p[*i].r_fit.unwrap()));
     }
     res.sort_unstable_by(|(_,v1), (_,v2)| v1.partial_cmp(v2).unwrap());
     tpi.total=tpi.total.saturating_add(sptt.elapsed());
