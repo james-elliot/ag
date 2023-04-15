@@ -117,8 +117,9 @@ fn eval_pop<T: ElemPop, U:UserData<T>>(mut p: Pop<T>,u:&U, par: bool, evolutive:
 		let mut e = v.data.lock().unwrap();
 		v.r_fit = Some(e.eval(u));
 	    }
-	})
-	 */
+    })
+	*/
+
 	let nb = rayon::current_num_threads();
 	let nbs = p.len()/nb+1;
 	let mut b:Vec<&mut [Chromosome<T>]> = p.chunks_mut(nbs).collect();
@@ -129,7 +130,8 @@ fn eval_pop<T: ElemPop, U:UserData<T>>(mut p: Pop<T>,u:&U, par: bool, evolutive:
 		    v.r_fit = Some(e.eval(u));
 		}
 	    })
-	})
+    })
+
     }
     else {
 	p.iter_mut().for_each(|v| {
