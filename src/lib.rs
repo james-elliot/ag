@@ -111,11 +111,24 @@ fn scale_fitness<T: ElemPop>(mut p: Pop<T>,scaling: u32,normalize: u32) -> Pop<T
 
 fn eval_pop<T: ElemPop, U:UserData<T>>(mut p: Pop<T>,u:&U, par: bool, evolutive: bool) -> Pop<T> {
     if par {
+	/*
 	p.par_iter_mut().for_each(|v| {
 	    if v.r_fit == None || evolutive {
 		let mut e = v.data.lock().unwrap();
 		v.r_fit = Some(e.eval(u));
 	    }
+	})
+	 */
+	let nb = rayon::current_num_threads();
+	let nbs = p.len()/nb+1;
+	let mut b:Vec<&mut [Chromosome<T>]> = p.chunks_mut(nbs).collect();
+	b.par_iter_mut().for_each(|a| {
+	    a.iter_mut().for_each(|v| {
+		if v.r_fit == None || evolutive {
+		    let mut e = v.data.lock().unwrap();
+		    v.r_fit = Some(e.eval(u));
+		}
+	    })
 	})
     }
     else {
