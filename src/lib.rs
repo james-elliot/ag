@@ -31,7 +31,7 @@ pub trait ElemPop: Clone + Send +Sync + std::fmt::Debug {
     fn dist(&self, u: &Self) -> f64;
     // mutate returns the new mutated element
     fn mutate(&self, r: &mut Trng) -> Self;
-    // As it is impossible to return two elements with unlnow size
+    // As it is impossible to return two elements with unknown size
     // cross takes two copies and modify them "in place"
     fn cross(e1: &mut Self,e2: &mut Self,r: &mut Trng);
     fn barycenter(e1: &Self, e2: &Self, n1: u32, n2: u32) -> Self;
