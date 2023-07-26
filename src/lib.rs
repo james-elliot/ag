@@ -165,7 +165,7 @@ fn find_best<T: ElemPop>(p: &Pop<T>) -> usize {
 }
 
 // Reproduce with stochastic remainders
-fn reproduce_pop<T: ElemPop>(mut oldp: Pop<T>, bests: &Vec<usize>, rng: &mut Trng) -> Pop<T> {
+fn reproduce_pop<T: ElemPop>(mut oldp: Pop<T>, bests: &[usize], rng: &mut Trng) -> Pop<T> {
     let nb_elems = oldp.len();
     let mut p: Pop<T> = Vec::with_capacity(nb_elems);
     let mut rmt: Vec<f64> = Vec::with_capacity(nb_elems);
@@ -224,7 +224,8 @@ fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, r
     let nb_mut = ((nb_elems as f64) * pmut) as usize;
     let nbr = nb_elems - nb_prot - nb_mut - nb_cross * 2;
     // Save protected elements
-    for i in 0..nb_prot {p.push(oldp[i].clone())}
+//    for i in 0..nb_prot {p.push(oldp[i].clone())}
+    for item in oldp.iter().take(nb_prot) {p.push(item.clone())}
     // Do mutations
     for _i in 0..nb_mut {
         let ind = rng.gen_range(0..nb_elems);
@@ -291,13 +292,13 @@ struct Cluster<T: ElemPop> {
 fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluster<T>> {
     // Each element is its own cluster
     let mut clus: Vec<Cluster<T>> = Vec::with_capacity(p.len());
-    for i in 0..p.len() {
+    for (i,o) in p.iter().enumerate() {
 	let mut c = Cluster {
-	    center: p[i].data.lock().unwrap().clone(),
+	    center: o.data.lock().unwrap().clone(),
             elems: Vec::new(),
             nb_elems: 1,
             best: i,
-            v_best: p[i].r_fit.unwrap(),
+            v_best: o.r_fit.unwrap(),
         };
         c.elems.push(i);
 	clus.push(c);
@@ -387,7 +388,7 @@ fn dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
     clus
 }
 
-fn share_fitness<T: ElemPop>(mut p: Pop<T>, clus: &Vec<Cluster<T>>, spenalty : u32) -> Pop<T> {
+fn share_fitness<T: ElemPop>(mut p: Pop<T>, clus: &[Cluster<T>], spenalty : u32) -> Pop<T> {
     let nb = p.len() as f64;
     for c in clus.iter() {
 	let k = c.nb_elems as f64;
@@ -521,12 +522,12 @@ pub fn ag<T:ElemPop,U:UserData<T>>(param:Option<Params>,u:&mut U)-> (Vec<(T,f64)
 
 	if par.sharing > 0 {
 	    let (spt,swt) = (ProcessTime::now(),Instant::now());
-            let clusters;
-	    match par.sharing {
-		1 => clusters = dyn_clustering(&p, par.dmax),
-		2 => clusters = dendro_clustering(&p, par.dmax, par.pmax),
-		_ => panic!("Sharing is 0, 1 or 2")
-	    }
+            let clusters=
+	        match par.sharing {
+		    1 => dyn_clustering(&p, par.dmax),
+		    2 => dendro_clustering(&p, par.dmax, par.pmax),
+		    _ => panic!("Sharing is 0, 1 or 2")
+	        };
             if par.verbose>=3 {for c in clusters.iter() {println!("{:?}", c)}}
             p = share_fitness(p, &clusters, par.spenalty);
             if par.verbose>=3 {for val in p.iter() {println!("Share: {:?}", val)}}
