@@ -395,7 +395,7 @@ fn share_fitness<T: ElemPop>(mut p: Pop<T>, clus: &Vec<Cluster<T>>, spenalty : u
 	    match spenalty {
 		0 => {}
 		1 => p[*i].s_fit /= k,
-		2 => p[*i].s_fit *= (1.-((k-1.)/nb)),
+		2 => p[*i].s_fit *= 1.-((k-1.)/nb),
 		_ => panic!("Invalid spenalty")
 	    }
 	}
