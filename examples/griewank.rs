@@ -7,8 +7,8 @@ const MAXV: f64 = 10.0;
 
 fn scale(a: f64) -> f64 {
     if a > MAXV {MINV + (a - MAXV)}
-    else if a < MINV {MAXV + (a - MINV)}
-    else {a}
+    else if a < MINV {return MAXV + (a - MINV)}
+    else {return a}
 }
 
 struct UData {}
@@ -30,9 +30,9 @@ impl ElemPop for EPop {
     fn eval<U:UserData<EPop>>(&mut self,_u:&U) -> f64 {
         let t = &self.v;
 	let (mut sum,mut prod) = (0.,1.);
-	for (i,x) in t.iter().enumerate().take(SIZE) {
-            sum += x * x;
-	    prod *= x.cos()/((i+1) as f64).sqrt();
+	for (i,o) in t.iter().enumerate().take(SIZE) {
+            sum += o * o;
+	    prod = prod * o.cos()/((i+1) as f64).sqrt();
 	}
 	let res = 10.-(sum/4000.-prod);
         res.max(0.)
@@ -55,17 +55,3 @@ impl ElemPop for EPop {
         let b2 = a * e2.v[i] + (1.0 - a) * e1.v[i];
         e1.v[i] = scale(b1);
         e2.v[i] = scale(b2);
-    }
-    fn barycenter(e1: &Self, e2: &Self, n1: u32, n2: u32) -> Self {
-	let mut t = Vec::with_capacity(SIZE);
-        let (fn1,fn2) = (n1 as f64,n2 as f64);
-	for i in 0..SIZE {t.push((fn1 * e1.v[i] + fn2 * e2.v[i]) / (fn1 + fn2))}
-        EPop {v:t}
-    }
-}
-
-fn main() {
-    let mut u = UData {};
-    let (bests,ptime,wtime) = ag::<EPop,UData>(None,&mut u);
-    println!("Bests: {:?}\nprocess_time: {:?}\nwall_clock_time: {:?}", bests,ptime,wtime);
-}

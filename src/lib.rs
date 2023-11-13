@@ -31,7 +31,7 @@ pub trait ElemPop: Clone + Send +Sync + std::fmt::Debug {
     fn dist(&self, u: &Self) -> f64;
     // mutate returns the new mutated element
     fn mutate(&self, r: &mut Trng) -> Self;
-    // As it is impossible to return two elements with unlnow size
+    // As it is impossible to return two elements with unknown size
     // cross takes two copies and modify them "in place"
     fn cross(e1: &mut Self,e2: &mut Self,r: &mut Trng);
     fn barycenter(e1: &Self, e2: &Self, n1: u32, n2: u32) -> Self;
@@ -111,12 +111,27 @@ fn scale_fitness<T: ElemPop>(mut p: Pop<T>,scaling: u32,normalize: u32) -> Pop<T
 
 fn eval_pop<T: ElemPop, U:UserData<T>>(mut p: Pop<T>,u:&U, par: bool, evolutive: bool) -> Pop<T> {
     if par {
+	/*
 	p.par_iter_mut().for_each(|v| {
 	    if v.r_fit.is_none() || evolutive {
 		let mut e = v.data.lock().unwrap();
 		v.r_fit = Some(e.eval(u));
 	    }
-	})
+    })
+	*/
+
+	let nb = rayon::current_num_threads();
+	let nbs = p.len()/nb+1;
+	let mut b:Vec<&mut [Chromosome<T>]> = p.chunks_mut(nbs).collect();
+	b.par_iter_mut().for_each(|a| {
+	    a.iter_mut().for_each(|v| {
+		if v.r_fit.is_none() || evolutive {
+		    let mut e = v.data.lock().unwrap();
+		    v.r_fit = Some(e.eval(u));
+		}
+	    })
+    })
+
     }
     else {
 	p.iter_mut().for_each(|v| {
@@ -228,7 +243,7 @@ fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, r
 	    match db {
 		Err(_) => {
 		    // da and db are identical, we try to find different another pair with different parents
-		    cnt+=1;
+		    cnt += 1;
 		    if cnt==nb_elems {
 			// However if we have already tried nb_elems time we give up and simply copy them with a warning message
 			println!("Warning!!!! Many identical elements!!!!");
@@ -277,13 +292,13 @@ struct Cluster<T: ElemPop> {
 fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluster<T>> {
     // Each element is its own cluster
     let mut clus: Vec<Cluster<T>> = Vec::with_capacity(p.len());
-    for (i,x) in p.iter().enumerate() {
+    for (i,o) in p.iter().enumerate() {
 	let mut c = Cluster {
-	    center: x.data.lock().unwrap().clone(),
+	    center: o.data.lock().unwrap().clone(),
             elems: Vec::new(),
             nb_elems: 1,
             best: i,
-            v_best: x.r_fit.unwrap(),
+            v_best: o.r_fit.unwrap(),
         };
         c.elems.push(i);
 	clus.push(c);
@@ -451,7 +466,7 @@ pub fn ag<T:ElemPop,U:UserData<T>>(param:Option<Params>,u:&mut U)-> (Vec<(T,f64)
 		    let mut new_name = Path::new(paths[i]).join(name);
 		    new_name = new_name.with_extension("json");
 		    if fs::metadata(new_name.clone()).is_ok() {break new_name};
-		    i+=1;
+		    i += 1;
 		    if i==paths.len() {panic!("No parameters file found")}
 		};
 	    println!("Parameter file {:?} found",path);
@@ -507,11 +522,12 @@ pub fn ag<T:ElemPop,U:UserData<T>>(param:Option<Params>,u:&mut U)-> (Vec<(T,f64)
 
 	if par.sharing > 0 {
 	    let (spt,swt) = (ProcessTime::now(),Instant::now());
-	    let clusters = match par.sharing {
-		1 => dyn_clustering(&p, par.dmax),
-		2 => dendro_clustering(&p, par.dmax, par.pmax),
-		_ => panic!("Sharing is 0, 1 or 2")
-	    };
+            let clusters=
+	        match par.sharing {
+		    1 => dyn_clustering(&p, par.dmax),
+		    2 => dendro_clustering(&p, par.dmax, par.pmax),
+		    _ => panic!("Sharing is 0, 1 or 2")
+	        };
             if par.verbose>=3 {for c in clusters.iter() {println!("{:?}", c)}}
             p = share_fitness(p, &clusters, par.spenalty);
             if par.verbose>=3 {for val in p.iter() {println!("Share: {:?}", val)}}
@@ -533,7 +549,7 @@ pub fn ag<T:ElemPop,U:UserData<T>>(param:Option<Params>,u:&mut U)-> (Vec<(T,f64)
 	    if bests.is_empty() {bests.push(ibest)}
 	    break
 	}
-	num+=1;
+	num += 1;
 
 	// Update global data and enable the "outside" part to access all information about the population
 	u.update(&p);
