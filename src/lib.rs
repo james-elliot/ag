@@ -59,21 +59,21 @@ fn normalize_hard<T: ElemPop>(mut p: Pop<T>) -> Pop<T> {
         if diff == 0. {v.s_fit = 1.0}
 	else {v.s_fit = (v.s_fit - mini) / diff}
     }
-    return p;
+    p
 }
 
 fn normalize_simple<T: ElemPop>(mut p: Pop<T>) -> Pop<T> {
     let maxi = p.iter().fold(f64::NEG_INFINITY, |acc, x| acc.max(x.s_fit));
     if maxi<=0. {panic!("All fitnesses <=0 in normalize_simple")}
     for v in p.iter_mut() {v.s_fit = (v.s_fit / maxi).max(0.)}
-    return p;
+    p
 }
 
 fn normalize_none<T: ElemPop>(mut p: Pop<T>) -> Pop<T> {
     let maxi = p.iter().fold(f64::NEG_INFINITY, |acc, x| acc.max(x.s_fit));
     if maxi<=0. {panic!("All fitnesses <=0 in normalize_none")}
     for v in p.iter_mut() {v.s_fit = v.s_fit.max(0.)}
-    return p;
+    p
 }
 
 fn sigma_truncation<T: ElemPop>(mut p: Pop<T>) -> Pop<T> {
@@ -82,14 +82,14 @@ fn sigma_truncation<T: ElemPop>(mut p: Pop<T>) -> Pop<T> {
     let mean = sum / nb_elems;
     let sigma = (ssum / nb_elems - mean * mean).sqrt();
     for x in p.iter_mut() {x.s_fit = (0.0_f64).max(x.s_fit - (mean - 2.0 * sigma))}
-    return p;
+    p
 }
 
 fn ranking<T: ElemPop>(mut p: Pop<T>) -> Pop<T> {
     let nb_elems = p.len();
     p.sort_unstable_by(|a, b| b.s_fit.partial_cmp(&a.s_fit).unwrap());
     for (i, x) in p.iter_mut().enumerate() {x.s_fit = (nb_elems - i) as f64}
-    return p;
+    p
 }
 
 fn scale_fitness<T: ElemPop>(mut p: Pop<T>,scaling: u32,normalize: u32) -> Pop<T> {
@@ -106,13 +106,13 @@ fn scale_fitness<T: ElemPop>(mut p: Pop<T>,scaling: u32,normalize: u32) -> Pop<T
 	2 => p = normalize_hard(p),
 	_ => panic!("NORMALIZE invalid")
     }
-    return p;
+    p
 }
 
 fn eval_pop<T: ElemPop, U:UserData<T>>(mut p: Pop<T>,u:&U, par: bool, evolutive: bool) -> Pop<T> {
     if par {
 	p.par_iter_mut().for_each(|v| {
-	    if v.r_fit == None || evolutive {
+	    if v.r_fit.is_none() || evolutive {
 		let mut e = v.data.lock().unwrap();
 		v.r_fit = Some(e.eval(u));
 	    }
@@ -120,13 +120,13 @@ fn eval_pop<T: ElemPop, U:UserData<T>>(mut p: Pop<T>,u:&U, par: bool, evolutive:
     }
     else {
 	p.iter_mut().for_each(|v| {
-	    if v.r_fit == None || evolutive {
+	    if v.r_fit.is_none() || evolutive {
 		let mut e = v.data.lock().unwrap();
 		v.r_fit = Some(e.eval(u));
 	    }
 	})
     }
-    return p;
+    p
 }
 
 fn new_pop<T: ElemPop>(nb_elems: usize,rng: &mut Trng) -> Pop<T> {
@@ -137,7 +137,7 @@ fn new_pop<T: ElemPop>(nb_elems: usize,rng: &mut Trng) -> Pop<T> {
 		data: Arc::new(Mutex::new(ElemPop::new(rng))),
 		r_fit: None,
 		s_fit: 0.,})}
-    return p;
+    p
 }
 
 fn find_best<T: ElemPop>(p: &Pop<T>) -> usize {
@@ -146,11 +146,11 @@ fn find_best<T: ElemPop>(p: &Pop<T>) -> usize {
 	let v = e.r_fit.unwrap();
         if v > b {b = v;ib = Some(ind)}
     }
-    return ib.unwrap();
+    ib.unwrap()
 }
 
 // Reproduce with stochastic remainders
-fn reproduce_pop<T: ElemPop>(mut oldp: Pop<T>, bests: &Vec<usize>, rng: &mut Trng) -> Pop<T> {
+fn reproduce_pop<T: ElemPop>(mut oldp: Pop<T>, bests: &[usize], rng: &mut Trng) -> Pop<T> {
     let nb_elems = oldp.len();
     let mut p: Pop<T> = Vec::with_capacity(nb_elems);
     let mut rmt: Vec<f64> = Vec::with_capacity(nb_elems);
@@ -163,7 +163,7 @@ fn reproduce_pop<T: ElemPop>(mut oldp: Pop<T>, bests: &Vec<usize>, rng: &mut Trn
     for ind in bests.iter() {
         p.push(oldp[*ind].clone());
         oldp[*ind].s_fit = (0.0_f64).max(oldp[*ind].s_fit - 1.);
-        t_rem = t_rem - 1;
+        t_rem -= 1;
     }
     // We recompute the sum of s_fit as we have modified it for protected elements
     let ssum2 = oldp.iter().fold(0., |acc, x| acc + x.s_fit);
@@ -175,17 +175,17 @@ fn reproduce_pop<T: ElemPop>(mut oldp: Pop<T>, bests: &Vec<usize>, rng: &mut Trn
         let nb = (t_rem as f64) * v.s_fit / ssum2;
         let inb = nb as i64;
         let rem = nb - (inb as f64);
-        sum = sum + inb;
-        fsum = fsum + rem;
+        sum += inb;
+        fsum += rem;
 	// We create the remainders array
         rmt.push(rem);
         for _i in 0..inb {p.push(v.clone())}
     }
     // The remainders array is now a %
-    for v in rmt.iter_mut() {*v = *v / fsum}
+    for v in rmt.iter_mut() {*v /= fsum}
     let mut prev = 0.;
     // It becomes a cumulative %
-    for v in rmt.iter_mut() {*v = *v + prev;prev = *v}
+    for v in rmt.iter_mut() {*v += prev;prev = *v}
     // Number of remaining slots
     let rem = t_rem - sum;
     for _i in 0..rem {
@@ -199,7 +199,7 @@ fn reproduce_pop<T: ElemPop>(mut oldp: Pop<T>, bests: &Vec<usize>, rng: &mut Trn
 	p.push(oldp[up].clone());
     }
     assert_eq!(p.len(),nb_elems);
-    return p;
+    p
 }
 
 fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, rng: &mut Trng) -> Pop<T> {
@@ -207,9 +207,10 @@ fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, r
     let mut p: Pop<T> = Vec::with_capacity(nb_elems);
     let nb_cross = ((nb_elems as f64) * pcross / 2.0) as usize;
     let nb_mut = ((nb_elems as f64) * pmut) as usize;
-    let nbr = (nb_elems as usize) - nb_prot - nb_mut - nb_cross * 2;
+    let nbr = nb_elems  - nb_prot - nb_mut - nb_cross * 2;
     // Save protected elements
-    for i in 0..nb_prot {p.push(oldp[i].clone())}
+//    for i in 0..nb_prot {p.push(oldp[i].clone())}
+    for x in oldp.iter().take(nb_prot) {p.push(x.clone())}
     // Do mutations
     for _i in 0..nb_mut {
         let ind = rng.gen_range(0..nb_elems);
@@ -227,7 +228,7 @@ fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, r
 	    match db {
 		Err(_) => {
 		    // da and db are identical, we try to find different another pair with different parents
-		    cnt=cnt+1;
+		    cnt+=1;
 		    if cnt==nb_elems {
 			// However if we have already tried nb_elems time we give up and simply copy them with a warning message
 			println!("Warning!!!! Many identical elements!!!!");
@@ -260,7 +261,7 @@ fn cross_mut<T: ElemPop>(oldp: Pop<T>, nb_prot: usize, pcross: f64, pmut: f64, r
 	}
     }
     assert_eq!(p.len(),nb_elems);
-    return p;
+    p
 }
 
 #[derive(Debug)]
@@ -276,13 +277,13 @@ struct Cluster<T: ElemPop> {
 fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluster<T>> {
     // Each element is its own cluster
     let mut clus: Vec<Cluster<T>> = Vec::with_capacity(p.len());
-    for i in 0..p.len() {
+    for (i,x) in p.iter().enumerate() {
 	let mut c = Cluster {
-	    center: p[i].data.lock().unwrap().clone(),
+	    center: x.data.lock().unwrap().clone(),
             elems: Vec::new(),
             nb_elems: 1,
             best: i,
-            v_best: p[i].r_fit.unwrap(),
+            v_best: x.r_fit.unwrap(),
         };
         c.elems.push(i);
 	clus.push(c);
@@ -327,10 +328,10 @@ fn dendro_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64, pmax: f64) -> Vec<Cluste
 	clus.push(c);
 	clus[i].nb_elems=0;
 	clus[j].nb_elems=0;
-	nb_clus = nb_clus-1;
+	nb_clus -= 1;
     }
     clus.retain(|c| c.nb_elems > 0);
-    return clus;
+    clus
 }
 
 // dynamic clustering is "unstable" as the order of elements modify the results
@@ -361,7 +362,7 @@ fn dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
             clus[bi].center = ElemPop::barycenter(
 		&clus[bi].center, &e.data.lock().unwrap(),
 		clus[bi].nb_elems, 1);
-            clus[bi].nb_elems = clus[bi].nb_elems + 1;
+            clus[bi].nb_elems += 1;
             clus[bi].elems.push(ind);
             if e.r_fit.unwrap() > clus[bi].v_best {
                 clus[bi].v_best = e.r_fit.unwrap();
@@ -369,23 +370,23 @@ fn dyn_clustering<T: ElemPop>(p: &Pop<T>, dmax: f64) -> Vec<Cluster<T>> {
             }
         }
     }
-    return clus;
+    clus
 }
 
-fn share_fitness<T: ElemPop>(mut p: Pop<T>, clus: &Vec<Cluster<T>>, spenalty : u32) -> Pop<T> {
+fn share_fitness<T: ElemPop>(mut p: Pop<T>, clus: &[Cluster<T>], spenalty : u32) -> Pop<T> {
     let nb = p.len() as f64;
     for c in clus.iter() {
 	let k = c.nb_elems as f64;
         for i in c.elems.iter() {
 	    match spenalty {
 		0 => {}
-		1 => p[*i].s_fit = p[*i].s_fit / k,
-		2 => p[*i].s_fit = p[*i].s_fit * (1.-((k-1.)/nb)),
+		1 => p[*i].s_fit /= k,
+		2 => p[*i].s_fit *= 1.-((k-1.)/nb),
 		_ => panic!("Invalid spenalty")
 	    }
 	}
     }
-    return p;
+    p
 }
 
 fn get_bests<T: ElemPop>(mut clus: Vec<Cluster<T>>, mut nbest:Vec<usize>,sfactor: f64, mut max_best: u32) -> Vec<usize> {
@@ -395,12 +396,12 @@ fn get_bests<T: ElemPop>(mut clus: Vec<Cluster<T>>, mut nbest:Vec<usize>,sfactor
     for c in clus.iter() {
         if c.v_best >= vbest * sfactor {
             nbest.push(c.best);
-            max_best = max_best - 1;
+            max_best -= 1;
             if max_best == 0 {break;}
         }
 	else {break;}
     }
-    return nbest;
+    nbest
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -450,7 +451,7 @@ pub fn ag<T:ElemPop,U:UserData<T>>(param:Option<Params>,u:&mut U)-> (Vec<(T,f64)
 		    let mut new_name = Path::new(paths[i]).join(name);
 		    new_name = new_name.with_extension("json");
 		    if fs::metadata(new_name.clone()).is_ok() {break new_name};
-		    i=i+1;
+		    i+=1;
 		    if i==paths.len() {panic!("No parameters file found")}
 		};
 	    println!("Parameter file {:?} found",path);
@@ -506,12 +507,11 @@ pub fn ag<T:ElemPop,U:UserData<T>>(param:Option<Params>,u:&mut U)-> (Vec<(T,f64)
 
 	if par.sharing > 0 {
 	    let (spt,swt) = (ProcessTime::now(),Instant::now());
-            let clusters;
-	    match par.sharing {
-		1 => clusters = dyn_clustering(&p, par.dmax),
-		2 => clusters = dendro_clustering(&p, par.dmax, par.pmax),
+	    let clusters = match par.sharing {
+		1 => dyn_clustering(&p, par.dmax),
+		2 => dendro_clustering(&p, par.dmax, par.pmax),
 		_ => panic!("Sharing is 0, 1 or 2")
-	    }
+	    };
             if par.verbose>=3 {for c in clusters.iter() {println!("{:?}", c)}}
             p = share_fitness(p, &clusters, par.spenalty);
             if par.verbose>=3 {for val in p.iter() {println!("Share: {:?}", val)}}
@@ -533,7 +533,7 @@ pub fn ag<T:ElemPop,U:UserData<T>>(param:Option<Params>,u:&mut U)-> (Vec<(T,f64)
 	    if bests.is_empty() {bests.push(ibest)}
 	    break
 	}
-	num=num+1;
+	num+=1;
 
 	// Update global data and enable the "outside" part to access all information about the population
 	u.update(&p);
@@ -558,5 +558,5 @@ pub fn ag<T:ElemPop,U:UserData<T>>(param:Option<Params>,u:&mut U)-> (Vec<(T,f64)
     res.sort_unstable_by(|(_,v1), (_,v2)| v1.partial_cmp(v2).unwrap());
     tpi.total=tpi.total.saturating_add(sptt.elapsed());
     twi.total=twi.total.saturating_add(swtt.elapsed());
-    return (res,tpi,twi)
+    (res,tpi,twi)
 }

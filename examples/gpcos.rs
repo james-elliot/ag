@@ -1,9 +1,12 @@
 use ag::*;
 use rand::Rng;
 
-const SIZE: usize = 100;
+const SIZE: usize = 2;
 const MINV: f64 = -10.0;
 const MAXV: f64 = 10.0;
+const XMIN:f64 = 0.;
+const XMAX:f64 = 1.;
+const NB_STEPS: usize = 100;
 
 fn scale(a: f64) -> f64 {
     if a > MAXV {MINV + (a - MAXV)}
@@ -29,13 +32,20 @@ impl ElemPop for EPop {
     }
     fn eval<U:UserData<EPop>>(&mut self,_u:&U) -> f64 {
         let t = &self.v;
-	let (mut sum,mut prod) = (0.,1.);
-	for (i,x) in t.iter().enumerate().take(SIZE) {
-            sum += x * x;
-	    prod *= x.cos()/((i+1) as f64).sqrt();
+	let mut sum = 0.;
+	const STEP:f64 = (XMAX-XMIN) / (NB_STEPS as f64);
+	for i in 0..NB_STEPS {
+	    let x = XMIN+(i as f64)*STEP;
+	    let mut tsum = 0.;
+	    let mut xp = 1.;
+	    for v in t.iter().take(SIZE) {
+		tsum += v * xp;
+		xp *= x;
+	    }
+	    sum += (tsum-x.cos())*(tsum-x.cos());
 	}
-	let res = 10.-(sum/4000.-prod);
-        res.max(0.)
+	sum /= NB_STEPS as f64;
+        1./sum
     }
     fn dist(&self, u: &Self) -> f64 {
 	let (t1,t2,mut d) = (&self.v,&u.v,0.);
@@ -44,8 +54,13 @@ impl ElemPop for EPop {
     }
     fn mutate(&self, r: &mut Trng) -> EPop {
 	let mut t = self.v.clone();
+	/*
 	let i = r.gen_range(0..SIZE);
-        t[i] = scale(t[i] + r.gen_range(-0.5..0.5));
+        t[i] = scale(t[i] * (1.+r.gen_range(-0.05..0.05)));
+	*/
+	for v in t.iter_mut().take(SIZE) {
+            *v = scale(*v * (1.+r.gen_range(-0.05..0.05)));
+	}
         EPop {v: t}
     }
     fn cross(e1: &mut EPop,e2: &mut EPop,r: &mut Trng) {
