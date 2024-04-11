@@ -1,7 +1,12 @@
 use ag::*;
 use rand::Rng;
 
-const SIZE: usize = 2;
+// Find the polynomial function of degree SIZE-1 that approximates best cos(x) on [XMIN,XMAX]
+// Criteria: min(I=integrate((cos(x)-a-b*x-c*x^2...)^2))
+// Integral is computed by Taylor sum with NB_STEPS
+// For SIZE=3, XMIN=0 and XMAX=1, the optimal COMPUTED solution by Mathematica using integration is:
+// a=1.00341, b=-0.0365365, c=-0.43101 and I = 2.24736.10^(-6) (1/I=444967)
+const SIZE: usize = 3;
 const MINV: f64 = -10.0;
 const MAXV: f64 = 10.0;
 const XMIN:f64 = 0.;
@@ -24,12 +29,14 @@ impl UserData<EPop> for UData {
 struct EPop {
     v: Vec<f64>,
 }
+
 impl ElemPop for EPop {
     fn new(r: &mut Trng) -> EPop {
 	let mut t = Vec::with_capacity(SIZE);
 	for _i in 0..SIZE {t.push(r.gen_range(MINV..MAXV))}
         EPop {v: t}
     }
+
     fn eval<U:UserData<EPop>>(&mut self,_u:&U) -> f64 {
         let t = &self.v;
 	let mut sum = 0.;
@@ -47,11 +54,13 @@ impl ElemPop for EPop {
 	sum /= NB_STEPS as f64;
         1./sum
     }
+
     fn dist(&self, u: &Self) -> f64 {
 	let (t1,t2,mut d) = (&self.v,&u.v,0.);
 	for i in 0..SIZE {d += (t1[i]-t2[i])*(t1[i]-t2[i])}
         d.sqrt()
     }
+
     fn mutate(&self, r: &mut Trng) -> EPop {
 	let mut t = self.v.clone();
 	/*
@@ -63,6 +72,7 @@ impl ElemPop for EPop {
 	}
         EPop {v: t}
     }
+
     fn cross(e1: &mut EPop,e2: &mut EPop,r: &mut Trng) {
         let a: f64 = r.gen_range(-0.5..1.5);
 	let i = r.gen_range(0..SIZE);
@@ -71,6 +81,7 @@ impl ElemPop for EPop {
         e1.v[i] = scale(b1);
         e2.v[i] = scale(b2);
     }
+
     fn barycenter(e1: &Self, e2: &Self, n1: u32, n2: u32) -> Self {
 	let mut t = Vec::with_capacity(SIZE);
         let (fn1,fn2) = (n1 as f64,n2 as f64);

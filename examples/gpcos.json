@@ -1,18 +1,18 @@
 // Parameters
 {
-    "nb_elems": 400,
-    "nb_gen": 100,
+    "nb_elems": 2000,
+    "nb_gen": 400,
     "pmut": 0.20, // Do nb_elems*pmut mutations
     "pcross": 0.40, // Do nb_elems*pcross/2 crossovers
     "evolutive": false, // true: re-evaluate identical elements
     "scaling": 1, // 0: None, 1: sigma_truncation, 2: ranking
-    "normalize": 1, // 0: f(x)=max(0,x), 1: f(x)=max(0,x/maxi), 2: f(x)=(x-mini)/(maxi-mini)
+    "normalize": 2, // 0: f(x)=max(0,x), 1: f(x)=max(0,x/maxi), 2: f(x)=(x-mini)/(maxi-mini)
     "elitist": true, // true: Protect overall best element
     "sharing": 2, // 0: None, 1: Dynamic, 2: Dendrogram
     "dmax": 1.0, // Dynamic: max distance for same cluster, Dendrogram: max dissimilarity
-    "pmax": 0.0, // Dendrogram: minimal percentage of population as clusters
+    "pmax": 0.1, // Dendrogram: minimal percentage of population as clusters
     "spenalty" : 1, // 0: None, 1: f/k, 2: f*(1-(k-1)/n)
-    "sfactor": 0.9, // 1.0: save only overall best, >1.0 : save none, <1.0 : save clusters best element
+    "sfactor": 0.6, // 1.0: save only overall best, >1.0 : save none, <1.0 : save clusters best element
     "parallel": false, // true: evaluate with parallelism
     "verbose": 1, //0: nothing, 1:parameters, 2:best elem and clus stats, 3:debug
     "seed": 124, // Random generator seed
