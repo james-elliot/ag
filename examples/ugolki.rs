@@ -6,7 +6,7 @@ fn test(v1:Vec<i32>,v2:Vec<i32>,t:f64) -> i32 {
     let mut v:Vec<String> = vec!["1".to_string(),t.to_string()]; 
     v.extend(v1);
     let mut process1 =
-	match Command::new("/home/alliot/ISAE/JEUX/UGOLKI/ugolkir.out")
+	match Command::new("/home/alliot/ISAE/JEUX/UGOLKI/PERSO/ugolki.out")
 	.args(v)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -20,7 +20,8 @@ fn test(v1:Vec<i32>,v2:Vec<i32>,t:f64) -> i32 {
     let v2:Vec<String> = v2.into_iter().map(|x| x.to_string() ).collect();
     let mut v:Vec<String> = vec!["-1".to_string(),t.to_string()]; 
     v.extend(v2);
-    let mut process2 = match Command::new("/home/alliot/ISAE/JEUX/UGOLKI/ugolkir.out")
+    let mut process2 =
+	match Command::new("/home/alliot/ISAE/JEUX/UGOLKI/PERSO/ugolki.out")
 	.args(v)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
